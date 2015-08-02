@@ -5,7 +5,6 @@
 Import-Module ActiveDirectory -ErrorAction Stop
 
 
-
 # Set the mail account username and password. Skip this if you are using an anonymous relay
 $User = 'relay@domain.com'
 $Password = 'P@$$w0rd!'
@@ -31,11 +30,9 @@ $ADFilter = {(PasswordNeverExpires -eq $False) -and (PasswordExpired -eq $False)
 $WhereFilter = {$_.PasswordLastSet -ne $Null}
 
 
-
-# Search all users whom have enabled accounts and have expiring passwords
+# Search all users whom have enabled accounts and have expiring passwords, with the aforementioned filters
 Get-ADUser -Filter $ADFilter -SearchBase $SearchBase -SearchScope Subtree -Properties PasswordLastSet,EmailAddress | Where-Object $WhereFilter | ForEach-Object {
     
-
 
     # Set a few variables per user for easier usage
     $PasswordLastSet = $_.PasswordLastSet
@@ -46,37 +43,37 @@ Get-ADUser -Filter $ADFilter -SearchBase $SearchBase -SearchScope Subtree -Prope
     
     # Check if the amount of days left for the current user is in the previously specified days.
     $IntervalHit = $DaysLeft -in $ReminderDays
-    
 
 
     # If the password will expire, send a mail to the user
     If ($IntervalHit) {
 
 
-
         # Sets the user's name. Can be changed to full name or omitted if no name should be used        
         $Name = $_.GivenName
 
         # Changes a few of the texts used in the mail. Need to see if this can be used with the Switch command
-        $ExpirationDays = If ($DaysLeft -eq 0) {'today'}
-        ElseIf ($DaysLeft -eq 1) {'in one day'}
-        Else {"in $DaysLeft days"}
-
+        $InXDays = Switch ($DaysLeft) {
+            0 {'today'}
+            1 {'in one day'}
+            default {"in $DaysLeft days"}
+        }
+        
         # Automatically apply or omit the text about complexity dependant on group policy
-        $Complexity = If ($ComplexityEnabled) {'<li>Het moet tekens uit minimaal 3 van de 4 onderstaande categorieën bevatten:</li>
-        <ul><li>Minstens een <em>kleine letter</em> (a-z)</li>
-        <li>Minstens een <em>hoofdletter</em> (A-Z)</li>
-        <li>Minstens een <em>cijfer</em> (0-9)</li>
-        <li>Minstens een <em>speciale teken</em> (!,?,*,~, etc.)</li></ul>'}
+        $ComplexityText = If ($ComplexityEnabled) {"<li>The password needs to include 3 of the 4 following categories:</li>
+        <ul><li>At least one <em>lower case</em> letter (a-z)</li>
+        <li>At least one <em>upper case</em> letter (A-Z)</li>
+        <li>At least one <em>numberr</em> (0-9)</li>
+        <li>At least one <em>special character</em> (!,?,*,~, etc.)</li></ul>"}
 
 
-
-        $Message = "<p>Dear $Name,<br></p>
-        <p>Your password will expire <em>$ExpirationDays</em>. You can change your password by pressing CTRL+ALT+DEL and then choosing the option to reset your password. If you are not at the Leiden or WTC campus, you can reset your password via the webmail. Click on the gear icon and subsequently on `"Change password`" to change your password.</p>
-        <p>If you have set up your Webster.nl email account on other devices such as an iPhone/iPad or an Android device, please change your password on those devices as well.</p>
+        #$Message = 
+        "<p>Dear $Name,<br></p>
+        <p>Your password will expire <em>$InXDays</em>. You can change your password by pressing CTRL+ALT+DEL and then choosing the option to reset your password. If you are not at the HEAD OFFICE or BRANCH OFFICE, you can reset your password via the webmail. Click on the gear icon and subsequently on `"Change password`" to change your password.</p>
+        <p>If you have set up your COMPANY email account on other devices such as an iPhone/iPad or an Android device, please change your password on those devices as well.</p>
         Your new password must adhere to the following requirements:
         <ul><li>It must be at least <em>$MinLength</em> characters long</li>
-        $complexity
+        $ComplexityText
         <li>It may not resemble the last <em>$PasswordHistory</em> passwords</li></ul>
         <p>A good password doesn't need to be very complicated. You can always use multiple random words to create a password. The following examples are as strong as any randomly generated password.</p>
         <ul><li>Correct battery horse staple</li>
@@ -89,7 +86,7 @@ Get-ADUser -Filter $ADFilter -SearchBase $SearchBase -SearchScope Subtree -Prope
         <p><br>
         Your IT department</p>"
 
-        Send-MailMessage -To $Email -From $From -Subject "Reminder: Your password expires $ExpirationDays" -Body $Message -SmtpServer $SMTPserver -BodyAsHTML -Credential $Credential -UseSsl -Port 587
+        Send-MailMessage -To $Email -From $From -Subject "Reminder: Your password expires $InXDays" -Body $Message -SmtpServer $SMTPserver -BodyAsHTML -Credential $Credential -UseSsl -Port 587
         
         }
 
@@ -98,6 +95,3 @@ Get-ADUser -Filter $ADFilter -SearchBase $SearchBase -SearchScope Subtree -Prope
 # The values here below can be used to have it write to event logs. My knowledge is a bit bad about logging to eventviewer so it's currently on hold.
 # If ($Error) {Write-EventLog -LogName Application -Source "Application Error" -EventId 2002 -EntryType Warning -Message "One or more errors occured while running the Send-PasswordExpirationMail Powershell script."}
 # Else {Write-EventLog -LogName Application -Source "Application Error" -EventId 2001 -EntryType Information -Message "The Send-PasswordExpirationMail Powershell script ran succesfully."}
-
-# Created by Tony Fortes Ramos on 2014-04-24
-# Last edited by Tony Fortes Ramos on 2015-08-02
