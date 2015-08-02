@@ -4,6 +4,10 @@
 
 Import-Module ActiveDirectory -ErrorAction Stop
 
+# Specify a source and the array for the messages to be written to the Event Logs.
+$EventLogSource = 'MyScripts'
+$EventLogMessage = @()
+
 
 # Set the mail account username and password. Skip this if you are using an anonymous relay
 $User = 'relay@domain.com'
@@ -44,7 +48,7 @@ Get-ADUser -Filter $ADFilter -SearchBase $SearchBase -SearchScope Subtree -Prope
     # Check if the amount of days left for the current user is in the previously specified days.
     $IntervalHit = $DaysLeft -in $ReminderDays
 
-
+    
     # If the password will expire, send a mail to the user
     If ($IntervalHit) {
 
@@ -56,7 +60,7 @@ Get-ADUser -Filter $ADFilter -SearchBase $SearchBase -SearchScope Subtree -Prope
         $InXDays = Switch ($DaysLeft) {
             0 {'today'}
             1 {'in one day'}
-            default {"in $DaysLeft days"}
+            Default {"in $DaysLeft days"}
         }
         
         # Automatically apply or omit the text about complexity dependant on group policy
@@ -67,8 +71,7 @@ Get-ADUser -Filter $ADFilter -SearchBase $SearchBase -SearchScope Subtree -Prope
         <li>At least one <em>special character</em> (!,?,*,~, etc.)</li></ul>"}
 
 
-        #$Message = 
-        "<p>Dear $Name,<br></p>
+        $Message = "<p>Dear $Name,<br></p>
         <p>Your password will expire <em>$InXDays</em>. You can change your password by pressing CTRL+ALT+DEL and then choosing the option to reset your password. If you are not at the HEAD OFFICE or BRANCH OFFICE, you can reset your password via the webmail. Click on the gear icon and subsequently on `"Change password`" to change your password.</p>
         <p>If you have set up your COMPANY email account on other devices such as an iPhone/iPad or an Android device, please change your password on those devices as well.</p>
         Your new password must adhere to the following requirements:
@@ -86,12 +89,15 @@ Get-ADUser -Filter $ADFilter -SearchBase $SearchBase -SearchScope Subtree -Prope
         <p><br>
         Your IT department</p>"
 
-        Send-MailMessage -To $Email -From $From -Subject "Reminder: Your password expires $InXDays" -Body $Message -SmtpServer $SMTPserver -BodyAsHTML -Credential $Credential -UseSsl -Port 587
-        
-        }
+        Send-MailMessage -To $Email -From $From -Subject "Reminder: Your password expires $InXDays" -Body $Message -SmtpServer $SMTPserver -BodyAsHTML -Credential $Credential -UseSsl -Port 587 -ErrorVariable
+
+        $EventLogMessage += "`n - A mail has been sent to $Name as his/her password expires in $DaysLeft days."
+
+    }
 
 }
 
-# The values here below can be used to have it write to event logs. My knowledge is a bit bad about logging to eventviewer so it's currently on hold.
-# If ($Error) {Write-EventLog -LogName Application -Source "Application Error" -EventId 2002 -EntryType Warning -Message "One or more errors occured while running the Send-PasswordExpirationMail Powershell script."}
-# Else {Write-EventLog -LogName Application -Source "Application Error" -EventId 2001 -EntryType Information -Message "The Send-PasswordExpirationMail Powershell script ran succesfully."}
+
+# The values here below can be used to have it write to event logs. My knowledge is a bit bad about error handling so improvements are welcome.
+If ($Error) {Write-EventLog -LogName Application -Source $EventLogSource -EventId 2 -EntryType Warning -Message 'One or more errors occured while running the Send-PasswordExpirationMail Powershell script.'}
+Else {Write-EventLog -LogName Application -Source $EventLogSource -EventId 1 -EntryType Information -Message "The Send-PasswordExpirationMail Powershell script ran succesfully. $EventLogMessage"}
