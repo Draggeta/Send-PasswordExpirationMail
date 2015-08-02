@@ -2,12 +2,13 @@
 # A basic script to send out emails to users about expiring passwords                       
 ###############################################################################################
 
-Import-Module ActiveDirectory -ErrorAction Stop
+Import-Module ActiveDirectory -ErrorVariable +EventLogErrors
+
 
 # Specify a source and the array for the messages to be written to the Event Logs.
+$EventLogName = 'Application'
 $EventLogSource = 'MyScripts'
 $EventLogMessage = @()
-
 
 # Set the mail account username and password. Skip this if you are using an anonymous relay
 $User = 'relay@domain.com'
@@ -17,25 +18,25 @@ $Credential = New-Object System.Management.Automation.PSCredential ($User,$Secur
 
 # Set the mail server properties
 $From = 'noreply@domain.com'
-$SMTPserver = 'server.domain.com'
+$SmtpServer = 'server.domain.com'
+$Port = '587'
 
 # Set the days before expiration on which a mail should be sent, but not after their account has been locked
 $ReminderDays = 0,1,2,3,7,14
 
 # Set the OU where your users are located
-$SearchBase = 'OU=Users,OU=Company,DC=Domain,DC=com'
+$SearchBase = 'OU=users,OU=company,DC=domain,DC=com'
 
-# Set a few default variables, most of these shouldn't be changed. 
+# Set a few default variables, most of these needen't be changed. 
 $MaxAge = (Get-ADDefaultDomainPasswordPolicy).MaxPasswordAge
 $MinLength = (Get-ADDefaultDomainPasswordPolicy).MinPasswordLength
 $PasswordHistory = (Get-ADDefaultDomainPasswordPolicy).PasswordHistoryCount
 $ComplexityEnabled = (Get-ADDefaultDomainPasswordPolicy).ComplexityEnabled
-$ADFilter = {(PasswordNeverExpires -eq $False) -and (PasswordExpired -eq $False) -and (Enabled -eq $True) -and (Emailaddress -ne "$Null")}
-$WhereFilter = {$_.PasswordLastSet -ne $Null}
+$ADFilter = {(PasswordNeverExpires -eq $False) -and (PasswordExpired -eq $False) -and (Enabled -eq $True) -and (Emailaddress -ne "$Null") -and (PasswordLastSet -ne "$Null")}
 
 
-# Search all users whom have enabled accounts and have expiring passwords, with the aforementioned filters
-Get-ADUser -Filter $ADFilter -SearchBase $SearchBase -SearchScope Subtree -Properties PasswordLastSet,EmailAddress | Where-Object $WhereFilter | ForEach-Object {
+# Search all users who match the aforementioned filters
+Get-ADUser -Filter $ADFilter -SearchBase $SearchBase -SearchScope Subtree -Properties PasswordLastSet,EmailAddress -ErrorVariable +EventLogErrors | ForEach-Object {
     
 
     # Set a few variables per user for easier usage
@@ -70,7 +71,7 @@ Get-ADUser -Filter $ADFilter -SearchBase $SearchBase -SearchScope Subtree -Prope
         <li>At least one <em>numberr</em> (0-9)</li>
         <li>At least one <em>special character</em> (!,?,*,~, etc.)</li></ul>"}
 
-
+        $Subject = "Reminder: Your password expires $InXDays"
         $Message = "<p>Dear $Name,<br></p>
         <p>Your password will expire <em>$InXDays</em>. You can change your password by pressing CTRL+ALT+DEL and then choosing the option to reset your password. If you are not at the HEAD OFFICE or BRANCH OFFICE, you can reset your password via the webmail. Click on the gear icon and subsequently on `"Change password`" to change your password.</p>
         <p>If you have set up your COMPANY email account on other devices such as an iPhone/iPad or an Android device, please change your password on those devices as well.</p>
@@ -87,9 +88,23 @@ Get-ADUser -Filter $ADFilter -SearchBase $SearchBase -SearchScope Subtree -Prope
         <p>Kind regards,</p>
         <br>
         <p><br>
-        Your IT department</p>"
+        COMPANY IT department</p>"
 
-        Send-MailMessage -To $Email -From $From -Subject "Reminder: Your password expires $InXDays" -Body $Message -SmtpServer $SMTPserver -BodyAsHTML -Credential $Credential -UseSsl -Port 587 -ErrorVariable
+        $SendMailMessageAttributes = @{
+
+            To = $Email
+            From = $From
+            Subject = $Subject
+            Body = $Message
+            SmtpServer = $SmtpServer
+            Credential = $Credential
+            Port = $Port
+            UseSsl = $True
+            BodyAsHTML = $True
+
+        }
+
+        Send-MailMessage @SendMailMessageAttributes -ErrorVariable +EventLogErrors
 
         $EventLogMessage += "`n - A mail has been sent to $Name as his/her password expires in $DaysLeft days."
 
@@ -99,5 +114,5 @@ Get-ADUser -Filter $ADFilter -SearchBase $SearchBase -SearchScope Subtree -Prope
 
 
 # The values here below can be used to have it write to event logs. My knowledge is a bit bad about error handling so improvements are welcome.
-If ($Error) {Write-EventLog -LogName Application -Source $EventLogSource -EventId 2 -EntryType Warning -Message 'One or more errors occured while running the Send-PasswordExpirationMail Powershell script.'}
-Else {Write-EventLog -LogName Application -Source $EventLogSource -EventId 1 -EntryType Information -Message "The Send-PasswordExpirationMail Powershell script ran succesfully. $EventLogMessage"}
+If ($EventLogErrors) {Write-EventLog -LogName $EventLogName -Source $EventLogSource -EventId 2 -EntryType Warning -Message "One or more errors occured while running the Send-PasswordExpirationMail Powershell script. See the errors below:`n`n $EventLogErrors"}
+Else {Write-EventLog -LogName $EventLogName -Source $EventLogSource -EventId 1 -EntryType Information -Message "The Send-PasswordExpirationMail Powershell script ran succesfully.`n $EventLogMessage"}
