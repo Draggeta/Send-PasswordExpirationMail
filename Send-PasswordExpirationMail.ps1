@@ -1,7 +1,41 @@
-﻿###############################################################################################
-# A basic script to send out emails to users about expiring passwords                       
-###############################################################################################
-
+﻿<#
+.SYNOPSIS
+    Sends out password expiration notices.
+.DESCRIPTION
+    The Send-PasswordExpirationMail.ps1 script sends out password expiration notices to users. Globally, the script is split into five parts: 
+	
+		- Setting of 'fixed' variables 
+		- AD query/foreach loop 
+		- Setting of 'volatile' variables in the loop
+		- Sending of the emails (if any)
+		- Writing errors or successes to the Event Log
+	
+	The important variables to change are the EventLog*, AD*, Mail* and PwdReminderDays variables. To use the EventLog variables, you may need to create your own Logname or Source with the New-EventLog cmdlet.
+	The ADFilter should suffice for most organizations, but the ADSearchBase variable will need to either be set or removed, depending on your preference.
+	Mail variables such as MailServer and MailPassword are used to talk to the mail server. 
+	To specify the remaining days on which to send the emails, you can type in an array of integers in the PwdReminderDays variable.
+	
+	It's important to note is that this script is written with authenticated relays in mind. If it's necessary to use anonymous relays, please change, remove or comment out the following values/variables:
+	
+		- $MailServer
+		- $MailPort
+		- $MailUsername
+		- $MailPassword
+		- $MailSecurePassword
+		- $MailCredential
+		- In $MailAttributes, 'UseSsl = $True', 'Port = $MailPort', 'Credential = $MailCredential'
+.INPUTS
+	None. You cannot pipe objects to Send-PasswordExpirationMail.ps1
+.OUTPUTS
+	None. Send-PasswordExpirationMail.ps1 only outputs to the EventLog
+.NOTES
+    Author:   Tony Fortes Ramos
+    Date:     April 24, 2014
+    Modified: August 3, 2015    
+.LINK
+	New-EventLog
+	Write-EventLog
+#>
 
 # Specify a logname, source and array for the messages that are to be written to the Event Logs. If they don't exist, creat them.
 $EventLogName = 'Application'
