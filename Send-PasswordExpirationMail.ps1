@@ -37,7 +37,7 @@
 	Write-EventLog
 #>
 
-# Specify a logname, source and array for the messages that are to be written to the Event Logs. If they don't exist, creat them.
+# Specify a logname, source and array for the messages that are to be written to the Event Logs. If they don't exist, create them.
 $EventLogName = 'Application'
 $EventLogSource = 'MyScripts'
 $EventLogMessage = @()
@@ -56,7 +56,7 @@ $ADFilter = {(PasswordNeverExpires -eq $False) -and (PasswordExpired -eq $False)
 $ADSearchBase = 'OU=users,OU=company,DC=domain,DC=com'
 
 # Specify the mail server properties. Note that the from address can be different from the mail account address/username.
-$MailServer = 'server.domain.com'
+$PSEmailServer = 'server.domain.com'
 $MailPort = '587'
 $MailFrom = 'noreply@domain.com'
 
@@ -66,12 +66,12 @@ $MailPassword = 'P@$$w0rd!'
 $MailSecurePassword = $MailPassword | ConvertTo-SecureString -AsPlainText -Force
 $MailCredential = New-Object System.Management.Automation.PSCredential ($MailUsername,$MailSecurePassword)
 
-# Specify the days before expiration on which a mail should be sent reminding the user to change his password.
+# Specify the days before expiration on which an email should be sent reminding the user to change his password.
 $PwdReminderDays = 0,1,2,3,7,14
 
-
 # Find all users who match the filters set in the previous command and then loop through each.
-Get-ADUser -Filter $ADFilter -SearchBase $ADSearchBase -SearchScope Subtree -Properties PasswordLastSet,EmailAddress -ErrorVariable +EventLogErrors | ForEach-Object {
+Get-ADUser -Filter $ADFilter -SearchBase $ADSearchBase -SearchScope Subtree -Properties PasswordLastSet,EmailAddress -ErrorVariable +EventLogErrors | 
+ForEach-Object -Process {
 
     # Set a few variables per user for easier usage. This is mostly cosmetic.
     $PwdLastSet = $_.PasswordLastSet
@@ -81,8 +81,7 @@ Get-ADUser -Filter $ADFilter -SearchBase $ADSearchBase -SearchScope Subtree -Pro
     # Check if the days left until the user's password expired is in the array specified earlier.
     $PwdIntervalHit = $PwdDaysLeft -in $PwdReminderDays
 
-    
-    # If the amount of days left until expiration is in the array, send a mail to the user.
+    # If the amount of days left until expiration is in the array, send an email to the user.
     If ($PwdIntervalHit) {
 
         $MailName = $_.GivenName
@@ -125,7 +124,6 @@ Get-ADUser -Filter $ADFilter -SearchBase $ADSearchBase -SearchScope Subtree -Pro
         <p><br>
         COMPANY IT department</p>"
 
-
         # Splat the attributes for use in the send-mailmessage cmdlet.
         $MailAttributes = @{
 
@@ -133,7 +131,6 @@ Get-ADUser -Filter $ADFilter -SearchBase $ADSearchBase -SearchScope Subtree -Pro
             From = $MailFrom
             Subject = $MailSubject
             Body = $MailBody
-            SmtpServer = $MailServer
             Credential = $MailCredential
             Port = $MailPort
             UseSsl = $True
@@ -144,34 +141,35 @@ Get-ADUser -Filter $ADFilter -SearchBase $ADSearchBase -SearchScope Subtree -Pro
         # Send the message to the user.
         Send-MailMessage @MailAttributes -ErrorVariable +EventLogErrors
 
-        # Add a small description to the messages array if a mail has been sent. Need to implement testing to check if an email has actually been sent out.
-        $EventLogMessage += "`n - A mail has been sent to $MailName as his/her password expires in $InXDays."
+        # Add a small description to the messages array if an email has been sent. Need to implement testing to check if an email has actually been sent out.
+        $EventLogMessage += "`n - An email has been sent to $MailName as his/her password expires in $InXDays."
 
     }
 
+} -End {
+
+    # The values here below can be used to have it write to event logs. My knowledge is a bit bad about error handling so improvements are welcome.
+    $WriteEventLogWarning = @{
+    
+        LogName = $EventLogName
+        Source = $EventLogSource
+        EventId = '2'
+        EntryType = 'Warning'
+        Message = "One or more errors occured while running the Send-PasswordExpirationMail Powershell script. See the errors below:`n`n $EventLogErrors"
+    
+    }
+    
+    $WriteEventLogInformation = @{
+    
+        LogName = $EventLogName
+        Source = $EventLogSource
+        EventId = '1'
+        EntryType = 'Information'
+        Message = "The Send-PasswordExpirationMail Powershell script ran succesfully.`n $EventLogMessage"
+    
+    }
+    
+    If ($EventLogErrors) {Write-EventLog @WriteEventLogWarning}
+    Else {Write-EventLog @WriteEventLogInformation}
+    
 }
-
-
-# The values here below can be used to have it write to event logs. My knowledge is a bit bad about error handling so improvements are welcome.
-$WriteEventLogWarning = @{
-
-    LogName = $EventLogName
-    Source = $EventLogSource
-    EventId = '2'
-    EntryType = 'Warning'
-    Message = "One or more errors occured while running the Send-PasswordExpirationMail Powershell script. See the errors below:`n`n $EventLogErrors"
-
-}
-
-$WriteEventLogInformation = @{
-
-    LogName = $EventLogName
-    Source = $EventLogSource
-    EventId = '1'
-    EntryType = 'Information'
-    Message = "The Send-PasswordExpirationMail Powershell script ran succesfully.`n $EventLogMessage"
-
-}
-
-If ($EventLogErrors) {Write-EventLog @WriteEventLogWarning}
-Else {Write-EventLog @WriteEventLogInformation}
