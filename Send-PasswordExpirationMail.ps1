@@ -14,29 +14,64 @@
 	The ADFilter should suffice for most organizations, but the ADSearchBase variable will need to either be set or removed, depending on your preference.
 	Mail variables such as MailServer and MailPassword are used to talk to the mail server. 
 	To specify the remaining days on which to send the emails, you can type in an array of integers in the PwdReminderDays variable.
-	
-	It's important to note is that this script is written with authenticated relays in mind. If it's necessary to use anonymous relays, please change, remove or comment out the following values/variables:
-	
-		- $MailServer
-		- $MailPort
-		- $MailUsername
-		- $MailPassword
-		- $MailSecurePassword
-		- $MailCredential
-		- In $MailAttributes, 'UseSsl = $True', 'Port = $MailPort', 'Credential = $MailCredential'
+.PARAMETER RemindOn
+Specifies when to send a reminder, in days. A single value can be specified or an array of values separated by commas.
+.PARAMETER SmtpServer
+The name of the server which will send email. Can be just the hostname of the FQDN of the server.
+.PARAMETER From
+The from address which will send the email.
+.PARAMETER Port
+The port on which to connect to the SMTP server. If not specified, the default port 25 is used.
+.PARAMETER SearchBase
+The OU where the revelant users can be found in the Active Directory environment. If not specified, the script will search through the whole AD to find users.
+.PARAMETER EventLogName
+The name of the event log where errors and successes will be written to. If specified, the EventLogSource parameter must also be specified. 
+If the event log name doesn't exits it must be created with the New-EventLog cmdlet.
+.PARAMETER EventLogSource
+The source of the errors and successes to be written to the event log. If specified, the EventLogName parameter must also be specified. 
+If the event log source doesn't exits it must be created with the New-EventLog cmdlet.
+.PARAMETER Credential
+Specify credentials allowed to send emails from the from address. This is necessary if authentication is needed and the account running the task isn't allowed to send via that address. 
+Can be used with the Get-Credential cmdlet. If not specified it will use the credentials specified in the script. If those are not specified either, the emails will be sent anonymously.
+.EXAMPLE
+Send-PasswordExpirationMail -RemindOn 1,3,7 -SmtpServer exchange.domain.com -From relay@domain.com
+Description
+    
+-----------
+    
+This command sends out emails on one, three and seven days before the password expires, via server exchange.domain.com from the relay@domain.com. This is the minimum required and will send emails via port 25 and anonymously
+.EXAMPLE
+Send-PasswordExpirationMail -RemindOn 1,7,14 -SmtpServer mail.contoso.com -From noreply@contoso.com -Port 587 -UseSsl -EventLogName Application -EventLogSource MyScripts
+Description
+    
+-----------
+    
+This command sends out emails encrypted and via port 587. It will also write errors and successes to the event log.
+.EXAMPLE
+$Cred = (Get-Credential)
+PS C:\>Send-PasswordExpirationMail -RemindOn 0,1,7 -SmtpServer smtp.company.com -From no-reply@company.com -Port 587 -SearchBase 'OU=Users,OU=Company,DC=Company,DC=local' -UseSsl -EventLogName Application -EventLogSource MyScripts -Credential $Cred
+
+
+Description
+    
+-----------
+    
+This command sends out emails authenticated and encrypted, while also logging to the event log. Credentials can be passed by using the Get-Credential cmdlet.
 .INPUTS
 	None. You cannot pipe objects to Send-PasswordExpirationMail.ps1
 .OUTPUTS
 	None. Send-PasswordExpirationMail.ps1 only outputs to the EventLog
 .NOTES
-    Author:  Tony Fortes Ramos
-    Created: April 24, 2014   
+    Author:   Tony Fortes Ramos
+    Created:  April 24, 2014
+    Modified: August 10, 2015
 .LINK
 	New-EventLog
 	Write-EventLog
+    Get-Credential
 #>
 
-[CmdletBinding()]
+[CmdletBinding(DefaultParameterSetName='None')]
 Param (
 
     [Parameter (Position = 0, Mandatory = $True)]
@@ -45,12 +80,15 @@ Param (
     [String]$SmtpServer,
     [Parameter (Position = 2, Mandatory = $True)]
     [String]$From,
+    [ValidateRange(1,65535)]
     [Int]$Port = '25',
     [Switch]$UseSsl,
-    [String]$SearchBase = (Get-Domain),
+    [String]$SearchBase = (Get-ADDomain).DistinguishedName,
+    [Parameter (ParameterSetName = 'EventLog',Mandatory = $True)]
     [String]$EventLogName,
+    [Parameter (ParameterSetName = 'EventLog',Mandatory = $True)]
     [String]$EventLogSource,
-    $Credential
+    [Object]$Credential
 
 )
 
@@ -67,15 +105,17 @@ $GpoComplexityEnabled = (Get-ADDefaultDomainPasswordPolicy).ComplexityEnabled
 $Today = Get-Date 
 
 # Specify the filters to use and the OU where the users are located in the domain.
-$Filter = {(PasswordNeverExpires -eq $False) -and (PasswordExpired -eq $False) -and (Enabled -eq $True) -and (Emailaddress -ne "$Null") -and (PasswordLastSet -ne "$Null")}
+$Filter = {(PasswordNeverExpires -eq $False) -and (PasswordExpired -eq $False) -and (pwdLastSet -ne "0") -and (PasswordLastSet -ne "$Null") -and (Enabled -eq $True) -and (Emailaddress -ne "$Null")}
 
 # Specify the mail server properties. Note that the from address can be different from the mail account address/username.
 $PSEmailServer = $SmtpServer
 
 # Specify the mail account username and password. Comment the following section or delete it if you are using an anonymous relay.
 $MailUsername = 'noreply@domain.com'
-$MailPassword = 'P@$$w0rd!'
-$MailSecurePassword = $MailPassword | ConvertTo-SecureString -AsPlainText -Force
+#$MailPassword = 'P@$$w0rd!'
+$MailPasswordFile = 'C:\Scripts\PwdRelay.txt'
+#$MailSecurePassword = $MailPassword | ConvertTo-SecureString -AsPlainText -Force
+$MailSecurePassword = Get-Content $MailPasswordFile | ConvertTo-SecureString 
 $MailCredential = New-Object System.Management.Automation.PSCredential ($MailUsername,$MailSecurePassword)
 
 # Find all users who match the filters set in the previous command and then loop through each.
@@ -145,34 +185,22 @@ ForEach-Object -Process {
 
         }
         
-        If ($UseSsl) {
-
-            $Ssl = @{UseSsl = $True}
-
-        }
-
-        If ($Credential) {
-
-            $Cred = @{Credential = $Credential}
-
-        }
-        ElseIf ($MailCredential) {
-
-            $Cred = @{Credential = $MailCredential}
-
-        }
+        If ($UseSsl.IsPresent) {$Ssl = @{UseSsl = $True}}
+        
+        If ($Credential) {$Cred = @{Credential = $Credential}}
+        ElseIf ($MailCredential) {$Cred = @{Credential = $MailCredential}}
 
         # Send the message to the user.
         Send-MailMessage @MailAttributes @Ssl @Cred -ErrorVariable +EventLogErrors
 
         # Add a small description to the messages array if an email has been sent. Need to implement testing to check if an email has actually been sent out.
-        $EventLogMessage += "`n - An email has been sent to $MailName as his/her password expires in $InXDays."
+        $EventLogMessage += "`n - An email has been sent to $Name as his/her password expires in $InXDays."
 
     }
 
 } -End {
 
-    If ($LogName -ne $Null -and $LogSource -ne $Null) {
+    If ($EventLogName -ne "$Null" -and $EventLogSource -ne "$Null") {
 
         # The values here below can be used to have it write to event logs. My knowledge is a bit bad about error handling so improvements are welcome.
         $WriteEventLogWarning = @{
