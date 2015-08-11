@@ -32,7 +32,8 @@ The source of the errors and successes to be written to the event log. If specif
 If the event log source doesn't exits it must be created with the New-EventLog cmdlet.
 .PARAMETER Credential
 Specify credentials allowed to send emails from the from address. This is necessary if authentication is needed and the account running the task isn't allowed to send via that address. 
-Can be used with the Get-Credential cmdlet. If not specified it will use the credentials specified in the script. If those are not specified either, the emails will be sent anonymously.
+Can be used with the Get-Credential cmdlet. If not specified it will use the credentials specified in the script. Those can be specified plain text below or pulled from an a file.
+If those are not specified either (commented/removed), the emails will be sent anonymously.
 .EXAMPLE
 Send-PasswordExpirationMail -RemindOn 1,3,7 -SmtpServer exchange.domain.com -From relay@domain.com
 Description
@@ -202,7 +203,7 @@ ForEach-Object -Process {
 
     If ($EventLogName -ne "$Null" -and $EventLogSource -ne "$Null") {
 
-        # The values here below can be used to have it write to event logs. My knowledge is a bit bad about error handling so improvements are welcome.
+        # The values here below can be used to have it write to event logs. My knowledge is a bit bad about error handling/outputting errors so improvements are welcome.
         $WriteEventLogWarning = @{
     
             LogName = $EventLogName
