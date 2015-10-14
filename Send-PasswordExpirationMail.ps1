@@ -2,62 +2,57 @@
 .SYNOPSIS
     Sends out password expiration notices.
 .DESCRIPTION
-    The Send-PasswordExpirationMail.ps1 script sends out password expiration notices to users. Globally, the script is split into five parts: 
-	
-		- Setting of 'fixed' variables 
-		- AD query/foreach loop 
-		- Setting of 'volatile' variables in the loop
-		- Sending of the emails (if any)
-		- Writing errors or successes to the Event Log
-	
-	The important variables to change are the EventLog*, AD*, Mail* and PwdReminderDays variables. To use the EventLog variables, you may need to create your own Logname or Source with the New-EventLog cmdlet.
-	The ADFilter should suffice for most organizations, but the ADSearchBase variable will need to either be set or removed, depending on your preference.
-	Mail variables such as MailServer and MailPassword are used to talk to the mail server. 
-	To specify the remaining days on which to send the emails, you can type in an array of integers in the PwdReminderDays variable.
+    The Send-PasswordExpirationMail.ps1 script sends out password expiration notices to users. While it is a bit convoluted it is written to work in most environments without changing much, if anything outside of the parameters.
+	To use the EventLog variables, you may need to create your own Logname or Source with the New-EventLog cmdlet if not using a default Windows log and source.
+	The AD Filter should suffice for most organizations. There is no smtp server specified in the Send-MailMessage cmdlet as we are using the global $PSEmailServer variable.
 .PARAMETER RemindOn
-Specifies when to send a reminder, in days. A single value can be specified or an array of values separated by commas.
+    Specifies when to send a reminder, in days. A single value can be specified or an array of values separated by commas.
 .PARAMETER SmtpServer
-The name of the server which will send email. Can be just the hostname of the FQDN of the server.
+    The name of the server which will send email. Can be just the hostname of the FQDN of the server.
 .PARAMETER From
-The from address which will send the email.
+    The from address which will send the email.
 .PARAMETER Port
-The port on which to connect to the SMTP server. If not specified, the default port 25 is used.
+    The port on which to connect to the SMTP server. If not specified, the default port 25 is used.
 .PARAMETER SearchBase
-The OU where the revelant users can be found in the Active Directory environment. If not specified, the script will search through the whole AD to find users.
+    The OU where the revelant users can be found in the Active Directory environment. If not specified, the script will search through the whole AD to find users.
 .PARAMETER EventLogName
-The name of the event log where errors and successes will be written to. If specified, the EventLogSource parameter must also be specified. 
-If the event log name doesn't exits it must be created with the New-EventLog cmdlet.
+    The name of the event log where errors and successes will be written to. If specified, the EventLogSource parameter must also be specified. 
+    If the event log name doesn't exits it must be created with the New-EventLog cmdlet.
 .PARAMETER EventLogSource
-The source of the errors and successes to be written to the event log. If specified, the EventLogName parameter must also be specified. 
-If the event log source doesn't exits it must be created with the New-EventLog cmdlet.
+    The source of the errors and successes to be written to the event log. If specified, the EventLogName parameter must also be specified. 
+    If the event log source doesn't exits it must be created with the New-EventLog cmdlet.
+.PARAMETER EventWarningID
+    The EventID to be used if one or more parts of the script fails.
+.PARAMETER EventInformationID
+    The EventID to be used if the script runs successfully.
 .PARAMETER Credential
-Specify credentials allowed to send emails from the from address. This is necessary if authentication is needed and the account running the task isn't allowed to send via that address. 
-Can be used with the Get-Credential cmdlet. If not specified it will use the credentials specified in the script. Those can be specified plain text below or pulled from an a file.
+    Specify credentials allowed to send emails from the from address. This is necessary if authentication is needed and the account running the task isn't allowed to send via that address. 
+    Can be used with the Get-Credential cmdlet. If not specified it will use the credentials specified in the script. Those can be specified plain text below or pulled from an a file.
 If those are not specified either (commented/removed), the emails will be sent anonymously.
 .EXAMPLE
-Send-PasswordExpirationMail -RemindOn 1,3,7 -SmtpServer exchange.domain.com -From relay@domain.com
-Description
+    Send-PasswordExpirationMail -RemindOn 1,3,7 -SmtpServer exchange.domain.com -From relay@domain.com
+    Description
     
------------
+    -----------
     
-This command sends out emails on one, three and seven days before the password expires, via server exchange.domain.com from the relay@domain.com. This is the minimum required and will send emails via port 25 and anonymously
+    This command sends out emails on one, three and seven days before the password expires, via server exchange.domain.com from the relay@domain.com. This is the minimum required and will send emails via port 25 and anonymously
 .EXAMPLE
-Send-PasswordExpirationMail -RemindOn 1,7,14 -SmtpServer mail.contoso.com -From noreply@contoso.com -Port 587 -UseSsl -EventLogName Application -EventLogSource MyScripts
-Description
+    Send-PasswordExpirationMail -RemindOn 1,7,14 -SmtpServer mail.contoso.com -From noreply@contoso.com -Port 587 -UseSsl -EventLogName Application -EventLogSource MyScripts -EventWarningId 2001 -EventInformationID 2002
+    Description
     
------------
+    -----------
     
-This command sends out emails encrypted and via port 587. It will also write errors and successes to the event log.
+    This command sends out emails encrypted and via port 587. It will also write errors and successes to the event log with the specified EventIDs.
 .EXAMPLE
-$Cred = (Get-Credential)
-PS C:\>Send-PasswordExpirationMail -RemindOn 0,1,7 -SmtpServer smtp.company.com -From no-reply@company.com -Port 587 -SearchBase 'OU=Users,OU=Company,DC=Company,DC=local' -UseSsl -EventLogName Application -EventLogSource MyScripts -Credential $Cred
+    $Cred = (Get-Credential)
+    PS C:\>Send-PasswordExpirationMail -RemindOn 0,1,7 -SmtpServer smtp.company.com -From no-reply@company.com -Port 587 -SearchBase 'OU=Users,OU=Company,DC=Company,DC=local' -UseSsl -EventLogName Application -EventLogSource MyScripts -Credential $Cred
 
 
-Description
+    Description
     
------------
+    -----------
     
-This command sends out emails authenticated and encrypted, while also logging to the event log. Credentials can be passed by using the Get-Credential cmdlet.
+    This command sends out emails authenticated and encrypted, while also logging to the event log with the default EventIDs. Credentials can be passed by using the Get-Credential cmdlet.
 .INPUTS
 	None. You cannot pipe objects to Send-PasswordExpirationMail.ps1
 .OUTPUTS
@@ -70,6 +65,8 @@ This command sends out emails authenticated and encrypted, while also logging to
 	New-EventLog
 	Write-EventLog
     Get-Credential
+    Get-ADUser
+    Send-MailMessage
 #>
 
 [CmdletBinding(DefaultParameterSetName='None')]
@@ -89,6 +86,7 @@ Param (
     [String]$EventLogName,
     [Parameter (ParameterSetName = 'EventLog',Mandatory = $True)]
     [String]$EventLogSource,
+<<<<<<< HEAD
     [Object]$MailCredential,
     [Parameter (ParameterSetName = 'ConfigFile',Mandatory = $True)]
     [ValidateScript({Test-Path -Path $_ -PathType Leaf})]
@@ -97,6 +95,17 @@ Param (
 )
 
 # Creates the log collection
+=======
+    [Parameter (ParameterSetName = 'EventLog')]
+    [Int]$EventWarningID = 1,
+    [Parameter (ParameterSetName = 'EventLog')]
+    [Int]$EventInformationID = 2,
+    [Object]$Credential
+
+)
+
+# Specify an array for the messages that are to be written to the Event Logs.
+>>>>>>> origin/development
 $EventLogMessage = @()
 
 #Import modules
@@ -109,16 +118,22 @@ $GpoPasswordHistory = (Get-ADDefaultDomainPasswordPolicy).PasswordHistoryCount
 $GpoComplexityEnabled = (Get-ADDefaultDomainPasswordPolicy).ComplexityEnabled
 $Today = Get-Date 
 
-# Specify the filters to use and the OU where the users are located in the domain.
-$Filter = {(PasswordNeverExpires -eq $False) -and (PasswordExpired -eq $False) -and (pwdLastSet -ne "0") -and (PasswordLastSet -ne "$Null") -and (Enabled -eq $True) -and (Emailaddress -ne "$Null")}
+# The filters to use.
+$Filter = {(PasswordNeverExpires -eq $False) -and (PasswordExpired -eq $False) -and (pwdLastSet -ne '0') -and (PasswordLastSet -ne "$Null") -and (Enabled -eq $True) -and (Emailaddress -ne "$Null")}
 
+<<<<<<< HEAD
 If ($ConfigFile) {
+=======
+# Set the $PSEmailServer variable so it doesn't need to be set later.
+$PSEmailServer = $SmtpServer
+>>>>>>> origin/development
 
     $SmtpServer = $ConfigFile.Settings.EmailServerSettings.SmtpServer
     $Port = $ConfigFile.Settings.EmailServerSettings.Port
     [Switch]$UseSsl = [Bool]$ConfigFile.Settings.EmailServerSettings.UseSsl
     $From = $ConfigFile.Settings.EmailServerSettings.From
 
+<<<<<<< HEAD
     $SearchBase = $ConfigFile.Settings.DomainSettings.UserSearchBase
     
     $MailCredential = $ConfigFile.Settings.Credentials.MailCredentials
@@ -132,6 +147,9 @@ If ($MailCredential) {
 }
 
 # Find all users who match the filters set in the previous sections and then loop through each.
+=======
+# Find all users who match the filters set in the previous variables and then loop through each.
+>>>>>>> origin/development
 Get-ADUser -Filter $Filter -SearchBase $SearchBase -SearchScope Subtree -Properties PasswordLastSet,EmailAddress -ErrorVariable +EventLogErrors | 
 ForEach-Object -Process {
 
@@ -162,7 +180,7 @@ ForEach-Object -Process {
         $ComplexityText = If ($GpoComplexityEnabled) {"<li>The password needs to include 3 of the 4 following categories:</li>
         <ul><li>At least one <em>lower case</em> letter (a-z)</li>
         <li>At least one <em>upper case</em> letter (A-Z)</li>
-        <li>At least one <em>numberr</em> (0-9)</li>
+        <li>At least one <em>number</em> (0-9)</li>
         <li>At least one <em>special character</em> (!,?,*,~, etc.)</li></ul>"}
 
         # Store the subject and body into variables for use in the send-mailmessage cmdlet.
@@ -198,14 +216,14 @@ ForEach-Object -Process {
 
         }
         
-        If ($UseSsl.IsPresent) {$Ssl = @{UseSsl = $True}}
+        If ($UseSsl) {$Ssl = @{UseSsl = $True}}
         
         If ($MailCredential) {$Cred = @{Credential = $MailCredential}}
 
         # Send the message to the user.
         Send-MailMessage @MailAttributes @Ssl @Cred -ErrorVariable +EventLogErrors
 
-        # Add a small description to the messages array if an email has been sent. Need to implement testing to check if an email has actually been sent out.
+        # Add a small description to the messages array if an email has been sent.
         $EventLogMessage += "`n - An email has been sent to $Name as his/her password expires in $InXDays."
 
     }
@@ -219,7 +237,7 @@ ForEach-Object -Process {
     
             LogName = $EventLogName
             Source = $EventLogSource
-            EventId = '2'
+            EventId = $EventWarningID
             EntryType = 'Warning'
             Message = "One or more errors occured while running the Send-PasswordExpirationMail Powershell script. See the errors below:`n`n $EventLogErrors"
     
@@ -229,7 +247,7 @@ ForEach-Object -Process {
     
             LogName = $EventLogName
             Source = $EventLogSource
-            EventId = '1'
+            EventId = $EventInformationID
             EntryType = 'Information'
             Message = "The Send-PasswordExpirationMail Powershell script ran succesfully.`n $EventLogMessage"
     
