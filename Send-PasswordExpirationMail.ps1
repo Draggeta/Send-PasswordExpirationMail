@@ -89,13 +89,17 @@ Param (
     [String]$EventLogName,
     [Parameter (ParameterSetName = 'EventLog',Mandatory = $True)]
     [String]$EventLogSource,
-    [Object]$Credential
+    [Object]$MailCredential,
+    [Parameter (ParameterSetName = 'ConfigFile',Mandatory = $True)]
+    [ValidateScript({Test-Path -Path $_ -PathType Leaf})]
+    [XML]$ConfigFile = (Get-Content -Path $_)
 
 )
 
-# Specify a logname, source and array for the messages that are to be written to the Event Logs. If they don't exist, create them.
+# Creates the log collection
 $EventLogMessage = @()
 
+#Import modules
 Import-Module ActiveDirectory -ErrorVariable +EventLogErrors
 
 # Set a few default variables, most of these needn't be changed unless you use fine-grained password policies.
@@ -108,18 +112,26 @@ $Today = Get-Date
 # Specify the filters to use and the OU where the users are located in the domain.
 $Filter = {(PasswordNeverExpires -eq $False) -and (PasswordExpired -eq $False) -and (pwdLastSet -ne "0") -and (PasswordLastSet -ne "$Null") -and (Enabled -eq $True) -and (Emailaddress -ne "$Null")}
 
-# Specify the mail server properties. Note that the from address can be different from the mail account address/username.
-$PSEmailServer = $SmtpServer
+If ($ConfigFile) {
 
-# Specify the mail account username and password. Comment the following section or delete it if you are using an anonymous relay.
-$MailUsername = 'noreply@domain.com'
-#$MailPassword = 'P@$$w0rd!'
-$MailPasswordFile = 'C:\Scripts\PwdRelay.txt'
-#$MailSecurePassword = $MailPassword | ConvertTo-SecureString -AsPlainText -Force
-$MailSecurePassword = Get-Content $MailPasswordFile | ConvertTo-SecureString 
-$MailCredential = New-Object System.Management.Automation.PSCredential ($MailUsername,$MailSecurePassword)
+    $SmtpServer = $ConfigFile.Settings.EmailServerSettings.SmtpServer
+    $Port = $ConfigFile.Settings.EmailServerSettings.Port
+    [Switch]$UseSsl = [Bool]$ConfigFile.Settings.EmailServerSettings.UseSsl
+    $From = $ConfigFile.Settings.EmailServerSettings.From
 
-# Find all users who match the filters set in the previous command and then loop through each.
+    $SearchBase = $ConfigFile.Settings.DomainSettings.UserSearchBase
+    
+    $MailCredential = $ConfigFile.Settings.Credentials.MailCredentials
+
+    $RemindOn = $ConfigFile.Settings.ScriptSettings.SendPasswordExpirationMail.RemindOn
+}
+
+If ($MailCredential) {
+    Import-Module CredentialManager -ErrorVariable +EventLogErrors
+    $MailCredential = Get-StoredCredential -Target $MailCredential
+}
+
+# Find all users who match the filters set in the previous sections and then loop through each.
 Get-ADUser -Filter $Filter -SearchBase $SearchBase -SearchScope Subtree -Properties PasswordLastSet,EmailAddress -ErrorVariable +EventLogErrors | 
 ForEach-Object -Process {
 
@@ -188,8 +200,7 @@ ForEach-Object -Process {
         
         If ($UseSsl.IsPresent) {$Ssl = @{UseSsl = $True}}
         
-        If ($Credential) {$Cred = @{Credential = $Credential}}
-        ElseIf ($MailCredential) {$Cred = @{Credential = $MailCredential}}
+        If ($MailCredential) {$Cred = @{Credential = $MailCredential}}
 
         # Send the message to the user.
         Send-MailMessage @MailAttributes @Ssl @Cred -ErrorVariable +EventLogErrors

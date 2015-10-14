@@ -1,0 +1,23 @@
+<?xml version="1.0"?>
+<Settings>
+	<EmailServerSettings>
+		<SmtpServer></SmtpServer>
+		<Port></Port>
+		<UseSsl></UseSsl>
+		<From></From>
+	</EmailServerSettings>
+	<DomainSettings>
+		<UserSearchBase></UserSearchBase>
+		<ComputerSearchBase></ComputerSearchBase>
+	</DomainSettings>
+	<Credentials>
+		<MailCredentials></MailCredentials>
+	</Credentials>
+	<ScriptSettings>
+		<SendPasswordExpirationMail>
+			<RemindOn></RemindOn>
+		</SendPasswordExpirationMail>
+	</ScriptSettings>
+</Settings>
+		
+		
