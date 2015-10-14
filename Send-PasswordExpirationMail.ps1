@@ -82,30 +82,22 @@ Param (
     [Int]$Port = '25',
     [Switch]$UseSsl,
     [String]$SearchBase = (Get-ADDomain).DistinguishedName,
+    [Object]$MailCredential,
     [Parameter (ParameterSetName = 'EventLog',Mandatory = $True)]
     [String]$EventLogName,
     [Parameter (ParameterSetName = 'EventLog',Mandatory = $True)]
     [String]$EventLogSource,
-<<<<<<< HEAD
-    [Object]$MailCredential,
+    [Parameter (ParameterSetName = 'EventLog')]
+    [Int]$EventWarningID = 1,
+    [Parameter (ParameterSetName = 'EventLog')]
+    [Int]$EventInformationID = 2,
     [Parameter (ParameterSetName = 'ConfigFile',Mandatory = $True)]
     [ValidateScript({Test-Path -Path $_ -PathType Leaf})]
     [XML]$ConfigFile = (Get-Content -Path $_)
 
 )
 
-# Creates the log collection
-=======
-    [Parameter (ParameterSetName = 'EventLog')]
-    [Int]$EventWarningID = 1,
-    [Parameter (ParameterSetName = 'EventLog')]
-    [Int]$EventInformationID = 2,
-    [Object]$Credential
-
-)
-
 # Specify an array for the messages that are to be written to the Event Logs.
->>>>>>> origin/development
 $EventLogMessage = @()
 
 #Import modules
@@ -121,19 +113,14 @@ $Today = Get-Date
 # The filters to use.
 $Filter = {(PasswordNeverExpires -eq $False) -and (PasswordExpired -eq $False) -and (pwdLastSet -ne '0') -and (PasswordLastSet -ne "$Null") -and (Enabled -eq $True) -and (Emailaddress -ne "$Null")}
 
-<<<<<<< HEAD
 If ($ConfigFile) {
-=======
 # Set the $PSEmailServer variable so it doesn't need to be set later.
-$PSEmailServer = $SmtpServer
->>>>>>> origin/development
 
     $SmtpServer = $ConfigFile.Settings.EmailServerSettings.SmtpServer
     $Port = $ConfigFile.Settings.EmailServerSettings.Port
     [Switch]$UseSsl = [Bool]$ConfigFile.Settings.EmailServerSettings.UseSsl
     $From = $ConfigFile.Settings.EmailServerSettings.From
 
-<<<<<<< HEAD
     $SearchBase = $ConfigFile.Settings.DomainSettings.UserSearchBase
     
     $MailCredential = $ConfigFile.Settings.Credentials.MailCredentials
@@ -146,10 +133,7 @@ If ($MailCredential) {
     $MailCredential = Get-StoredCredential -Target $MailCredential
 }
 
-# Find all users who match the filters set in the previous sections and then loop through each.
-=======
 # Find all users who match the filters set in the previous variables and then loop through each.
->>>>>>> origin/development
 Get-ADUser -Filter $Filter -SearchBase $SearchBase -SearchScope Subtree -Properties PasswordLastSet,EmailAddress -ErrorVariable +EventLogErrors | 
 ForEach-Object -Process {
 
