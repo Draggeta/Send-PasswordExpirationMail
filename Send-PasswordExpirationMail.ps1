@@ -79,11 +79,11 @@ If those are not specified either (commented/removed), the emails will be sent a
 [CmdletBinding(DefaultParameterSetName='ConfigFile')]
 Param (
     
-    [Parameter (ParameterSetName = 'Secondary', Mandatory = $True)]
+    [Parameter (ParameterSetName = 'Secondary', Mandatory = $True, Position = 1)]
     [Array]$RemindOn,
-    [Parameter (ParameterSetName = 'Secondary', Mandatory = $True)]
+    [Parameter (ParameterSetName = 'Secondary', Mandatory = $True, Position = 2)]
     [String]$SmtpServer,
-    [Parameter (ParameterSetName = 'Secondary', Mandatory = $True)]
+    [Parameter (ParameterSetName = 'Secondary', Mandatory = $True, Position = 3)]
     [String]$From,
     [Parameter (ParameterSetName = 'Secondary')]
     [ValidateRange(1,65535)]
@@ -104,10 +104,10 @@ Param (
 
 )
 
-# Specify an array for the messages that are to be written to the Event Logs.
+# Create an empty array for the messages which are to be written to the Event Logs.
 $EventLogMessage = @()
 
-#Import modules
+#Import the necessary modules.  
 Import-Module ActiveDirectory -ErrorVariable +EventLogErrors
 
 # Set a few default variables, most of these needn't be changed unless you use fine-grained password policies.
@@ -117,7 +117,7 @@ $GpoPasswordHistory = (Get-ADDefaultDomainPasswordPolicy).PasswordHistoryCount
 $GpoComplexityEnabled = (Get-ADDefaultDomainPasswordPolicy).ComplexityEnabled
 $Today = Get-Date 
 
-# The filters used to limit the users. Probably enough for most users.
+# The filters used to limit the queried users. Probably enough in most cases.
 $Filter = {(PasswordNeverExpires -eq $False) -and (PasswordExpired -eq $False) -and (pwdLastSet -ne '0') -and (PasswordLastSet -ne "$Null") -and (Enabled -eq $True) -and (Emailaddress -ne "$Null")}
 
 If ($ConfigFile) {
@@ -149,7 +149,7 @@ If ($MailCredential) {
 
 }
 
-# Find all users who match the filters set in the previous variables and then loop through each.
+# Find all users who match the filters specified and then loop through each.
 Get-ADUser -Filter $Filter -SearchBase $SearchBase -SearchScope Subtree -Properties PasswordLastSet,EmailAddress -ErrorVariable +EventLogErrors | 
 ForEach-Object -Process {
 
@@ -158,7 +158,7 @@ ForEach-Object -Process {
     $PwdExpirationDate = $PwdLastSet + $GpoMaxAge
     $PwdDaysLeft = ($PwdExpirationDate - $Today).days
     
-    # Check if the days left until the user's password expired is in the array specified earlier.
+    # Check if the days left until the user's password expired is in the array specified.
     $PwdIntervalHit = $PwdDaysLeft -in $RemindOn
 
     # If the amount of days left until expiration is in the array, send an email to the user.
@@ -204,7 +204,7 @@ ForEach-Object -Process {
         <p><br>
         COMPANY IT department</p>"
 
-        # Splat the attributes for use in the send-mailmessage cmdlet.
+        # Splat the attributes for use in the Send-MailMessage cmdlet.
         $MailAttributes = @{
 
             To = $To
@@ -229,10 +229,11 @@ ForEach-Object -Process {
     }
 
 } -End {
-
+    
+    # Write to the event log if the logs have been specified
     If ($EventLogName -and $EventLogSource) {
 
-        # The values here below can be used to have it write to event logs. My knowledge is a bit bad about error handling/outputting errors so improvements are welcome.
+        # The values here below can be used to have it write to event logs.
         $WriteEventLogWarning = @{
     
             LogName = $EventLogName
