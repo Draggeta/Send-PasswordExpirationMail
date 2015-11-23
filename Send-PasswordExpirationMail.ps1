@@ -67,7 +67,7 @@ If those are not specified either (commented/removed), the emails will be sent a
 .NOTES
     Author:   Tony Fortes Ramos
     Created:  April 24, 2014
-    Modified: August 10, 2015
+    Modified: November 23, 2015
 .LINK
 	New-EventLog
 	Write-EventLog
@@ -117,7 +117,7 @@ $GpoPasswordHistory = (Get-ADDefaultDomainPasswordPolicy).PasswordHistoryCount
 $GpoComplexityEnabled = (Get-ADDefaultDomainPasswordPolicy).ComplexityEnabled
 $Today = Get-Date 
 
-# The filters to use.
+# The filters used to limit the users. Probably enough for most users.
 $Filter = {(PasswordNeverExpires -eq $False) -and (PasswordExpired -eq $False) -and (pwdLastSet -ne '0') -and (PasswordLastSet -ne "$Null") -and (Enabled -eq $True) -and (Emailaddress -ne "$Null")}
 
 If ($ConfigFile) {
