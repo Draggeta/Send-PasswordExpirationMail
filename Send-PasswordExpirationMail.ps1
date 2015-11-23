@@ -5,6 +5,9 @@
     The Send-PasswordExpirationMail.ps1 script sends out password expiration notices to users. While it is a bit convoluted it is written to work in most environments without changing much, if anything outside of the parameters.
 	To use the EventLog variables, you may need to create your own Logname or Source with the New-EventLog cmdlet if not using a default Windows log and source.
 	The AD Filter should suffice for most organizations. There is no smtp server specified in the Send-MailMessage cmdlet as we are using the global $PSEmailServer variable.
+.PARAMETER Credential
+    Specify credentials allowed to send emails from the from address. This is necessary if authentication is needed and the account running the task isn't allowed to send via that address. 
+    Can be used with the Get-Credential cmdlet. If not specified it will use the credentials specified in the script. Those can be specified plain text below or pulled from an a file.
 .PARAMETER RemindOn
     Specifies when to send a reminder, in days. A single value can be specified or an array of values separated by commas.
 .PARAMETER SmtpServer
@@ -25,10 +28,14 @@
     The EventID to be used if one or more parts of the script fails.
 .PARAMETER EventInformationID
     The EventID to be used if the script runs successfully.
-.PARAMETER Credential
-    Specify credentials allowed to send emails from the from address. This is necessary if authentication is needed and the account running the task isn't allowed to send via that address. 
-    Can be used with the Get-Credential cmdlet. If not specified it will use the credentials specified in the script. Those can be specified plain text below or pulled from an a file.
 If those are not specified either (commented/removed), the emails will be sent anonymously.
+.EXAMPLE
+    Send-PasswordExpirationMail -ConfigFile 'C:\Scripts\ConfigFile.xml'
+    Description
+    
+    -----------
+
+    This command sends out emails according to the settings specified in the configuration file.
 .EXAMPLE
     Send-PasswordExpirationMail -RemindOn 1,3,7 -SmtpServer exchange.domain.com -From relay@domain.com
     Description
@@ -69,31 +76,31 @@ If those are not specified either (commented/removed), the emails will be sent a
     Send-MailMessage
 #>
 
-[CmdletBinding(DefaultParameterSetName='None')]
+[CmdletBinding(DefaultParameterSetName='ConfigFile')]
 Param (
-
-    [Parameter (Position = 0, Mandatory = $True)]
+    
+    [Parameter (ParameterSetName = 'Secondary', Mandatory = $True)]
     [Array]$RemindOn,
-    [Parameter (Position = 1, Mandatory = $True)]
+    [Parameter (ParameterSetName = 'Secondary', Mandatory = $True)]
     [String]$SmtpServer,
-    [Parameter (Position = 2, Mandatory = $True)]
+    [Parameter (ParameterSetName = 'Secondary', Mandatory = $True)]
     [String]$From,
+    [Parameter (ParameterSetName = 'Secondary')]
     [ValidateRange(1,65535)]
     [Int]$Port = '25',
+    [Parameter (ParameterSetName = 'Secondary')]
     [Switch]$UseSsl,
+    [Parameter (ParameterSetName = 'Secondary')]
     [String]$SearchBase = (Get-ADDomain).DistinguishedName,
-    [Object]$MailCredential,
-    [Parameter (ParameterSetName = 'EventLog',Mandatory = $True)]
+    [Parameter (ParameterSetName = 'Secondary')]
     [String]$EventLogName,
-    [Parameter (ParameterSetName = 'EventLog',Mandatory = $True)]
+    [Parameter (ParameterSetName = 'Secondary')]
     [String]$EventLogSource,
-    [Parameter (ParameterSetName = 'EventLog')]
-    [Int]$EventWarningID = 1,
-    [Parameter (ParameterSetName = 'EventLog')]
-    [Int]$EventInformationID = 2,
-    [Parameter (ParameterSetName = 'ConfigFile',Mandatory = $True)]
+    [Parameter (ParameterSetName = 'Secondary')]
+    [Object]$MailCredential,
+    [Parameter (ParameterSetName = 'ConfigFile')]
     [ValidateScript({Test-Path -Path $_ -PathType Leaf})]
-    [XML]$ConfigFile = (Get-Content -Path $_)
+    [String]$ConfigFile
 
 )
 
@@ -114,23 +121,32 @@ $Today = Get-Date
 $Filter = {(PasswordNeverExpires -eq $False) -and (PasswordExpired -eq $False) -and (pwdLastSet -ne '0') -and (PasswordLastSet -ne "$Null") -and (Enabled -eq $True) -and (Emailaddress -ne "$Null")}
 
 If ($ConfigFile) {
-# Set the $PSEmailServer variable so it doesn't need to be set later.
 
-    $SmtpServer = $ConfigFile.Settings.EmailServerSettings.SmtpServer
+    [xml]$ConfigFile = (Get-Content -Path $ConfigFile) 
+    # Set the $PSEmailServer variable so it doesn't need to be set later.
+    $PSEmailServer = $ConfigFile.Settings.EmailServerSettings.SmtpServer
     $Port = $ConfigFile.Settings.EmailServerSettings.Port
-    [Switch]$UseSsl = [Bool]$ConfigFile.Settings.EmailServerSettings.UseSsl
+    [bool]$UseSsl = [int]$ConfigFile.Settings.EmailServerSettings.UseSsl
     $From = $ConfigFile.Settings.EmailServerSettings.From
-
+    
+    $EventLogName = $ConfigFile.Settings.EventLogSettings.EventLogName
+    $EventLogSource = $ConfigFile.Settings.EventLogSettings.EventLogSource
+    $EventInformationID = $ConfigFile.Settings.EventLogSettings.EventLogInformationID
+    $EventWarningID = $ConfigFile.Settings.EventLogSettings.EventLogWarningID
+    
     $SearchBase = $ConfigFile.Settings.DomainSettings.UserSearchBase
     
     $MailCredential = $ConfigFile.Settings.Credentials.MailCredentials
+    
+    $RemindOn = [array]($ConfigFile.Settings.ScriptSettings.SendPasswordExpirationMail.RemindOn).Split(',')
 
-    $RemindOn = $ConfigFile.Settings.ScriptSettings.SendPasswordExpirationMail.RemindOn
 }
 
 If ($MailCredential) {
+
     Import-Module CredentialManager -ErrorVariable +EventLogErrors
     $MailCredential = Get-StoredCredential -Target $MailCredential
+
 }
 
 # Find all users who match the filters set in the previous variables and then loop through each.
@@ -200,21 +216,21 @@ ForEach-Object -Process {
 
         }
         
-        If ($UseSsl) {$Ssl = @{UseSsl = $True}}
+        If ($UseSsl) {$MailAttributes += @{UseSsl = $True}}
         
-        If ($MailCredential) {$Cred = @{Credential = $MailCredential}}
+        If ($MailCredential) {$MailAttributes += @{Credential = $MailCredential}}
 
         # Send the message to the user.
-        Send-MailMessage @MailAttributes @Ssl @Cred -ErrorVariable +EventLogErrors
+        Send-MailMessage @MailAttributes -ErrorVariable +EventLogErrors
 
         # Add a small description to the messages array if an email has been sent.
-        $EventLogMessage += "`n - An email has been sent to $Name as his/her password expires in $InXDays."
+        $EventLogMessage += "`n - An email has been sent to $Name as his/her password expires $InXDays."
 
     }
 
 } -End {
 
-    If ($EventLogName -ne "$Null" -and $EventLogSource -ne "$Null") {
+    If ($EventLogName -and $EventLogSource) {
 
         # The values here below can be used to have it write to event logs. My knowledge is a bit bad about error handling/outputting errors so improvements are welcome.
         $WriteEventLogWarning = @{

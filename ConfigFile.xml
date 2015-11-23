@@ -6,6 +6,12 @@
 		<UseSsl></UseSsl>
 		<From></From>
 	</EmailServerSettings>
+	<EventLogSettings>
+		<EventLogName></EventLogName>
+		<EventLogSource></EventLogSource>
+		<EventLogInformationID></EventLogInformationID>
+		<EventLogWarningID></EventLogWarningID>
+	</EventLogSettings>
 	<DomainSettings>
 		<UserSearchBase></UserSearchBase>
 		<ComputerSearchBase></ComputerSearchBase>
@@ -19,5 +25,3 @@
 		</SendPasswordExpirationMail>
 	</ScriptSettings>
 </Settings>
-		
-		
