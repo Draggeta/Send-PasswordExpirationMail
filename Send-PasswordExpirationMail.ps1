@@ -5,9 +5,8 @@
     The Send-PasswordExpirationMail.ps1 script sends out password expiration notices to users. While it is a bit convoluted it is written to work in most environments without changing much, if anything outside of the parameters.
 	To use the EventLog variables, you may need to create your own Logname or Source with the New-EventLog cmdlet if not using a default Windows log and source.
 	The AD Filter should suffice for most organizations. There is no smtp server specified in the Send-MailMessage cmdlet as we are using the global $PSEmailServer variable.
-.PARAMETER Credential
-    Specify credentials allowed to send emails from the from address. This is necessary if authentication is needed and the account running the task isn't allowed to send via that address. 
-    Can be used with the Get-Credential cmdlet. If not specified it will use the credentials specified in the script. Those can be specified plain text below or pulled from an a file.
+.PARAMETER ConfigFile
+    Specifies the location of the config file.
 .PARAMETER RemindOn
     Specifies when to send a reminder, in days. A single value can be specified or an array of values separated by commas.
 .PARAMETER SmtpServer
@@ -29,6 +28,9 @@
 .PARAMETER EventInformationID
     The EventID to be used if the script runs successfully.
 If those are not specified either (commented/removed), the emails will be sent anonymously.
+.PARAMETER Credential
+    Specify credentials allowed to send emails from the from address. This is necessary if authentication is needed and the account running the task isn't allowed to send via that address. 
+    Can be used with the Get-Credential cmdlet. If not specified it will use the credentials specified in the script. Those can be specified plain text below or pulled from an a file.
 .EXAMPLE
     Send-PasswordExpirationMail -ConfigFile 'C:\Scripts\ConfigFile.xml'
     Description
@@ -104,6 +106,82 @@ Param (
 
 )
 
+
+function Write-StatusToEventLog {
+
+    If ($EventLogName -and $EventLogSource) {
+
+        # The values here below can be used to have it write to event logs.
+        $WriteEventLog = @{
+        
+            LogName = $EventLogName
+            Source = $EventLogSource
+        
+        }
+        
+        If ($EventLogErrors) {
+        
+            $WriteEventLog += @{
+
+                EventId = $EventWarningID
+                EntryType = 'Warning'
+                Message = "One or more errors occured while running the Send-PasswordExpirationMail Powershell script. See the errors below:`n`n $EventLogErrors"
+
+            }
+
+        } Else {
+
+            $WriteEventLog += @{
+
+                EventId = $EventInformationID
+                EntryType = 'Information'
+                Message = "The Send-PasswordExpirationMail Powershell script ran succesfully.`n $EventLogMessage"
+
+            }
+            
+        }
+
+        Write-EventLog @WriteEventLog
+
+    }
+
+}
+
+
+function Send-StatusMessage {
+
+    $MailAttributes = @{
+
+        To = $AdminEmail
+        From = $From
+        Port = $Port
+        
+    }
+    If ($UseSsl) {$MailAttributes += @{UseSsl = $True}}
+    
+    If ($MailCredential) {$MailAttributes += @{Credential = $MailCredential}}
+    
+    If ($EventLogErrors) {
+
+        $MailAttributes += @{
+            Subject = 'Send-PasswordExpirationMail script execution failed'
+            Body = "One or more errors occured while running the Send-PasswordExpirationMail Powershell script. See the errors below:`n`n $EventLogErrors"
+        }
+
+    } Else {
+
+        $MailAttributes += @{
+            Subject = 'Send-PasswordExpirationMail script execution succeeded'
+            Body = "The Send-PasswordExpirationMail Powershell script ran succesfully.`n $EventLogMessage"
+        }
+
+    }
+
+    Send-MailMessage @MailAttributes
+
+}
+
+
 # Create an empty array for the messages which are to be written to the Event Logs.
 $EventLogMessage = @()
 
@@ -128,6 +206,7 @@ If ($ConfigFile) {
     $Port = $ConfigFile.Settings.EmailServerSettings.Port
     [bool]$UseSsl = [int]$ConfigFile.Settings.EmailServerSettings.UseSsl
     $From = $ConfigFile.Settings.EmailServerSettings.From
+    $AdminEmail = ($ConfigFile.Settings.EmailServerSettings.AdminEmail).Split(',')
     
     $EventLogName = $ConfigFile.Settings.EventLogSettings.EventLogName
     $EventLogSource = $ConfigFile.Settings.EventLogSettings.EventLogSource
@@ -229,6 +308,15 @@ ForEach-Object -Process {
     }
 
 } -End {
+
+    Send-StatusMessage
+    Write-StatusToEventLog
+
+}
+
+
+<#
+-End {
     
     # Write to the event log if the logs have been specified
     If ($EventLogName -and $EventLogSource) {
@@ -260,3 +348,4 @@ ForEach-Object -Process {
     }
     
 }
+#>

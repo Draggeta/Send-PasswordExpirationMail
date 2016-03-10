@@ -5,6 +5,7 @@
 		<Port></Port>
 		<UseSsl></UseSsl>
 		<From></From>
+		<AdminEmail></AdminEmail>
 	</EmailServerSettings>
 	<EventLogSettings>
 		<EventLogName></EventLogName>
