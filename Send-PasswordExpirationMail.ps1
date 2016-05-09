@@ -5,8 +5,9 @@
     The Send-PasswordExpirationMail.ps1 script sends out password expiration notices to users. While it is a bit convoluted it is written to work in most environments without changing much, if anything outside of the parameters.
 	To use the EventLog variables, you may need to create your own Logname or Source with the New-EventLog cmdlet if not using a default Windows log and source.
 	The AD Filter should suffice for most organizations. There is no smtp server specified in the Send-MailMessage cmdlet as we are using the global $PSEmailServer variable.
-.PARAMETER ConfigFile
-    Specifies the location of the config file.
+.PARAMETER Credential
+    Specify credentials allowed to send emails from the from address. This is necessary if authentication is needed and the account running the task isn't allowed to send via that address. 
+    Can be used with the Get-Credential cmdlet. If not specified it will use the credentials specified in the script. Those can be specified plain text below or pulled from an a file.
 .PARAMETER RemindOn
     Specifies when to send a reminder, in days. A single value can be specified or an array of values separated by commas.
 .PARAMETER SmtpServer
@@ -28,9 +29,6 @@
 .PARAMETER EventInformationID
     The EventID to be used if the script runs successfully.
 If those are not specified either (commented/removed), the emails will be sent anonymously.
-.PARAMETER Credential
-    Specify credentials allowed to send emails from the from address. This is necessary if authentication is needed and the account running the task isn't allowed to send via that address. 
-    Can be used with the Get-Credential cmdlet. If not specified it will use the credentials specified in the script. Those can be specified plain text below or pulled from an a file.
 .EXAMPLE
     Send-PasswordExpirationMail -ConfigFile 'C:\Scripts\ConfigFile.xml'
     Description
@@ -106,82 +104,6 @@ Param (
 
 )
 
-
-function Write-StatusToEventLog {
-
-    If ($EventLogName -and $EventLogSource) {
-
-        # The values here below can be used to have it write to event logs.
-        $WriteEventLog = @{
-        
-            LogName = $EventLogName
-            Source = $EventLogSource
-        
-        }
-        
-        If ($EventLogErrors) {
-        
-            $WriteEventLog += @{
-
-                EventId = $EventWarningID
-                EntryType = 'Warning'
-                Message = "One or more errors occured while running the Send-PasswordExpirationMail Powershell script. See the errors below:`n`n $EventLogErrors"
-
-            }
-
-        } Else {
-
-            $WriteEventLog += @{
-
-                EventId = $EventInformationID
-                EntryType = 'Information'
-                Message = "The Send-PasswordExpirationMail Powershell script ran succesfully.`n $EventLogMessage"
-
-            }
-            
-        }
-
-        Write-EventLog @WriteEventLog
-
-    }
-
-}
-
-
-function Send-StatusMessage {
-
-    $MailAttributes = @{
-
-        To = $AdminEmail
-        From = $From
-        Port = $Port
-        
-    }
-    If ($UseSsl) {$MailAttributes += @{UseSsl = $True}}
-    
-    If ($MailCredential) {$MailAttributes += @{Credential = $MailCredential}}
-    
-    If ($EventLogErrors) {
-
-        $MailAttributes += @{
-            Subject = 'Send-PasswordExpirationMail script execution failed'
-            Body = "One or more errors occured while running the Send-PasswordExpirationMail Powershell script. See the errors below:`n`n $EventLogErrors"
-        }
-
-    } Else {
-
-        $MailAttributes += @{
-            Subject = 'Send-PasswordExpirationMail script execution succeeded'
-            Body = "The Send-PasswordExpirationMail Powershell script ran succesfully.`n $EventLogMessage"
-        }
-
-    }
-
-    Send-MailMessage @MailAttributes
-
-}
-
-
 # Create an empty array for the messages which are to be written to the Event Logs.
 $EventLogMessage = @()
 
@@ -189,10 +111,7 @@ $EventLogMessage = @()
 Import-Module ActiveDirectory -ErrorVariable +EventLogErrors
 
 # Set a few default variables, most of these needn't be changed unless you use fine-grained password policies.
-$GpoMaxAge = (Get-ADDefaultDomainPasswordPolicy).MaxPasswordAge
-$GpoMinLength = (Get-ADDefaultDomainPasswordPolicy).MinPasswordLength
-$GpoPasswordHistory = (Get-ADDefaultDomainPasswordPolicy).PasswordHistoryCount
-$GpoComplexityEnabled = (Get-ADDefaultDomainPasswordPolicy).ComplexityEnabled
+$ADPasswordPolicy = Get-ADDefaultDomainPasswordPolicy
 $Today = Get-Date 
 
 # The filters used to limit the queried users. Probably enough in most cases.
@@ -206,7 +125,6 @@ If ($ConfigFile) {
     $Port = $ConfigFile.Settings.EmailServerSettings.Port
     [bool]$UseSsl = [int]$ConfigFile.Settings.EmailServerSettings.UseSsl
     $From = $ConfigFile.Settings.EmailServerSettings.From
-    $AdminEmail = ($ConfigFile.Settings.EmailServerSettings.AdminEmail).Split(',')
     
     $EventLogName = $ConfigFile.Settings.EventLogSettings.EventLogName
     $EventLogSource = $ConfigFile.Settings.EventLogSettings.EventLogSource
@@ -228,8 +146,47 @@ If ($MailCredential) {
 
 }
 
+$ADUsers = Get-ADUser -Filter $Filter -SearchBase $SearchBase -SearchScope Subtree -Properties PasswordNeverExpires,PasswordLastSet,EmailAddress -ErrorVariable +EventLogErrors
+
+$ADUserPasswordPolicy = ForEach ($ADUser in $ADUsers) {
+    $FGPasswordPolicy = Get-ADUserResultantPasswordPolicy $ADUser
+    If ($FGPasswordPolicy) {
+        If ($ADUser.PasswordNeverExpires -eq $True) {
+            $DaysUntilExpiration = $Null
+        } ElseIf ($ADUser.PasswordNeverExpires -eq $False) {
+            $DaysUntilExpiration = (($ADUser.PasswordLastSet + $FGPasswordPolicy.MaxPasswordAge) - $Today).Days
+        }
+        $MinPasswordLength = $FGPasswordPolicy.MinPasswordLength
+        $PasswordHistoryCount = $FGPasswordPolicy.PasswordHistoryCount
+        $ComplexityEnabled = $FGPasswordPolicy.ComplexityEnabled
+    }
+    ElseIf (-not $FGPasswordPolicy) {
+        If ($ADUser.PasswordNeverExpires -eq $True) {
+            $DaysUntilExpiration = $Null
+        } ElseIf ($ADUser.PasswordNeverExpires -eq $False) {
+            $DaysUntilExpiration = (($ADUser.PasswordLastSet + $ADPasswordPolicy.MaxPasswordAge) - $Today).Days
+        }
+        $MinPasswordLength = $ADPasswordPolicy.MinPasswordLength
+        $PasswordHistoryCount = $ADPasswordPolicy.PasswordHistoryCount
+        $ComplexityEnabled = $ADPasswordPolicy.ComplexityEnabled
+    }
+    $ADUserProperties = @{
+        'DistinguishedName' = $ADuser.DistinguishedName
+        'Enabled' = $ADuser.Enabled
+        'Name' = $ADuser.Name
+        'GivenName' = $ADuser.GivenName
+        'Surname' = $ADuser.Surname
+        'EmailAddress' = $ADuser.EmailAddress
+        'PasswordNeverExpires' = $ADUser.PasswordNeverExpires
+        'DaysUntilExpiration' = $DaysUntilExpiration
+        'MinPasswordLength' = $MinPasswordLength
+        'PasswordHistoryCount' = $PasswordHistoryCount
+        'ComplexityEnabled' = $ComplexityEnabled
+    }
+    New-Object -TypeName PSObject -Property $ADUserProperties
+}
+
 # Find all users who match the filters specified and then loop through each.
-Get-ADUser -Filter $Filter -SearchBase $SearchBase -SearchScope Subtree -Properties PasswordLastSet,EmailAddress -ErrorVariable +EventLogErrors | 
 ForEach-Object -Process {
 
     # Set a few variables per user for easier usage. This is mostly cosmetic.
@@ -308,15 +265,6 @@ ForEach-Object -Process {
     }
 
 } -End {
-
-    Send-StatusMessage
-    Write-StatusToEventLog
-
-}
-
-
-<#
--End {
     
     # Write to the event log if the logs have been specified
     If ($EventLogName -and $EventLogSource) {
@@ -348,4 +296,3 @@ ForEach-Object -Process {
     }
     
 }
-#>

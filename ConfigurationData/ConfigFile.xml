@@ -15,14 +15,21 @@
 	</EventLogSettings>
 	<DomainSettings>
 		<UserSearchBase></UserSearchBase>
+		<DisabledUserSearchBase></DisabledUserSearchBase>
 		<ComputerSearchBase></ComputerSearchBase>
+		<ServerSearchBase></ServerSearchBase>
+		<DCSearchBase></DCSearchBase>
 	</DomainSettings>
 	<Credentials>
 		<MailCredentials></MailCredentials>
+		<Office365Credentials></Office365Credentials>
 	</Credentials>
 	<ScriptSettings>
 		<SendPasswordExpirationMail>
 			<RemindOn></RemindOn>
+			<EventLogSource></EventLogSource>
+			<EventLogInformationID></EventLogInformationID>
+			<EventLogWarningID></EventLogWarningID>
 		</SendPasswordExpirationMail>
 	</ScriptSettings>
 </Settings>
