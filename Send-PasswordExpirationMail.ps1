@@ -76,34 +76,6 @@ If those are not specified either (commented/removed), the emails will be sent a
     Send-MailMessage
 #>
 
-[CmdletBinding(DefaultParameterSetName='ConfigFile')]
-Param (
-    
-    [Parameter (ParameterSetName = 'Secondary', Mandatory = $True, Position = 1)]
-    [Array]$RemindOn,
-    [Parameter (ParameterSetName = 'Secondary', Mandatory = $True, Position = 2)]
-    [String]$SmtpServer,
-    [Parameter (ParameterSetName = 'Secondary', Mandatory = $True, Position = 3)]
-    [String]$From,
-    [Parameter (ParameterSetName = 'Secondary')]
-    [ValidateRange(1,65535)]
-    [Int]$Port = '25',
-    [Parameter (ParameterSetName = 'Secondary')]
-    [Switch]$UseSsl,
-    [Parameter (ParameterSetName = 'Secondary')]
-    [String]$SearchBase = (Get-ADDomain).DistinguishedName,
-    [Parameter (ParameterSetName = 'Secondary')]
-    [String]$EventLogName,
-    [Parameter (ParameterSetName = 'Secondary')]
-    [String]$EventLogSource,
-    [Parameter (ParameterSetName = 'Secondary')]
-    [Object]$MailCredential,
-    [Parameter (ParameterSetName = 'ConfigFile')]
-    [ValidateScript({Test-Path -Path $_ -PathType Leaf})]
-    [String]$ConfigFile
-
-)
-
 # Create an empty array for the messages which are to be written to the Event Logs.
 $EventLogMessage = @()
 
@@ -117,182 +89,203 @@ $Today = Get-Date
 # The filters used to limit the queried users. Probably enough in most cases.
 $Filter = {(PasswordNeverExpires -eq $False) -and (PasswordExpired -eq $False) -and (pwdLastSet -ne '0') -and (PasswordLastSet -ne "$Null") -and (Enabled -eq $True) -and (Emailaddress -ne "$Null")}
 
-If ($ConfigFile) {
-
-    [xml]$ConfigFile = (Get-Content -Path $ConfigFile) 
-    # Set the $PSEmailServer variable so it doesn't need to be set later.
-    $PSEmailServer = $ConfigFile.Settings.EmailServerSettings.SmtpServer
-    $Port = $ConfigFile.Settings.EmailServerSettings.Port
-    [bool]$UseSsl = [int]$ConfigFile.Settings.EmailServerSettings.UseSsl
-    $From = $ConfigFile.Settings.EmailServerSettings.From
-    
-    $EventLogName = $ConfigFile.Settings.EventLogSettings.EventLogName
-    $EventLogSource = $ConfigFile.Settings.EventLogSettings.EventLogSource
-    $EventInformationID = $ConfigFile.Settings.EventLogSettings.EventLogInformationID
-    $EventWarningID = $ConfigFile.Settings.EventLogSettings.EventLogWarningID
-    
-    $SearchBase = $ConfigFile.Settings.DomainSettings.UserSearchBase
-    
-    $MailCredential = $ConfigFile.Settings.Credentials.MailCredentials
-    
-    $RemindOn = [array]($ConfigFile.Settings.ScriptSettings.SendPasswordExpirationMail.RemindOn).Split(',')
-
+Function Get-PEUsers {
+    [CmdletBinding(DefaultParameterSetName = 'Filter')]
+    Param (
+        [Parameter(ParameterSetName = 'Identity', Mandatory = $True)]
+        $Identity,
+        [Parameter(ParameterSetName = 'Filter')]
+        $Filter = '*',
+        [Parameter(ParameterSetName = 'Filter')]
+        $SearchBase = (Get-ADDomain).DistinguishedName
+    )
+    BEGIN {
+        If ($Identity) {
+            $ADUsers = Get-ADUser -Identity $Identity
+        } Else {
+            $ADUsers = Get-ADUser -Filter $Filter -SearchBase $SearchBase -SearchScope Subtree -Properties PasswordNeverExpires,PasswordLastSet,EmailAddress -ErrorVariable +EventLogErrors
+        }
+        $ADPasswordPolicy = Get-ADDefaultDomainPasswordPolicy
+        $Today = Get-Date 
+    }
+    PROCESS {
+        ForEach ($ADUser in $ADUsers) {
+            $FGPasswordPolicy = Get-ADUserResultantPasswordPolicy $ADUser
+            If ($FGPasswordPolicy) {
+                If ($ADUser.PasswordNeverExpires -eq $True) {
+                    $DaysUntilExpiration = $Null
+                } ElseIf ($ADUser.PasswordNeverExpires -eq $False) {
+                    $DaysUntilExpiration = (($ADUser.PasswordLastSet + $FGPasswordPolicy.MaxPasswordAge) - $Today).Days
+                }
+                $MinPasswordLength = $FGPasswordPolicy.MinPasswordLength
+                $PasswordHistoryCount = $FGPasswordPolicy.PasswordHistoryCount
+                $ComplexityEnabled = $FGPasswordPolicy.ComplexityEnabled
+            }
+            ElseIf (-not $FGPasswordPolicy) {
+                If ($ADUser.PasswordNeverExpires -eq $True) {
+                    $DaysUntilExpiration = $Null
+                } ElseIf ($ADUser.PasswordNeverExpires -eq $False) {
+                    $DaysUntilExpiration = (($ADUser.PasswordLastSet + $ADPasswordPolicy.MaxPasswordAge) - $Today).Days
+                }
+                $MinPasswordLength = $ADPasswordPolicy.MinPasswordLength
+                $PasswordHistoryCount = $ADPasswordPolicy.PasswordHistoryCount
+                $ComplexityEnabled = $ADPasswordPolicy.ComplexityEnabled
+            }
+            $ADUserProperties = [Ordered]@{
+                'DistinguishedName' = $ADuser.DistinguishedName
+                'Enabled' = $ADuser.Enabled
+                'Name' = $ADuser.Name
+                'GivenName' = $ADuser.GivenName
+                'Surname' = $ADuser.Surname
+                'EmailAddress' = $ADuser.EmailAddress
+                'PasswordNeverExpires' = $ADUser.PasswordNeverExpires
+                'DaysUntilExpiration' = $DaysUntilExpiration
+                'MinPasswordLength' = $MinPasswordLength
+                'PasswordHistoryCount' = $PasswordHistoryCount
+                'ComplexityEnabled' = $ComplexityEnabled
+            }
+            New-Object -TypeName PSObject -Property $ADUserProperties
+        }
+    }
+    END {
+    }
 }
 
-If ($MailCredential) {
-
-    Import-Module CredentialManager -ErrorVariable +EventLogErrors
-    $MailCredential = Get-StoredCredential -Target $MailCredential
-
-}
-
-$ADUsers = Get-ADUser -Filter $Filter -SearchBase $SearchBase -SearchScope Subtree -Properties PasswordNeverExpires,PasswordLastSet,EmailAddress -ErrorVariable +EventLogErrors
-
-$ADUserPasswordPolicy = ForEach ($ADUser in $ADUsers) {
-    $FGPasswordPolicy = Get-ADUserResultantPasswordPolicy $ADUser
-    If ($FGPasswordPolicy) {
-        If ($ADUser.PasswordNeverExpires -eq $True) {
-            $DaysUntilExpiration = $Null
-        } ElseIf ($ADUser.PasswordNeverExpires -eq $False) {
-            $DaysUntilExpiration = (($ADUser.PasswordLastSet + $FGPasswordPolicy.MaxPasswordAge) - $Today).Days
+Function Send-PEMailMessage {
+    [CmdletBinding()]
+    Param (
+        [Parameter (ParameterSetName = 'Parameter', Mandatory = $True, Position = 1)]
+        [Array]$RemindOn,
+        [Parameter (ParameterSetName = 'Parameter', Mandatory = $True, Position = 2)]
+        [String]$SmtpServer,
+        [Parameter (ParameterSetName = 'Parameter', Mandatory = $True, Position = 3)]
+        [String]$From,
+        [Parameter (ParameterSetName = 'Parameter')]
+        [ValidateRange(1,65535)]
+        [Int]$Port = '25',
+        [Parameter (ParameterSetName = 'Parameter')]
+        [Switch]$UseSsl,
+        [Parameter (ParameterSetName = 'Parameter')]
+        [String]$EventLogName,
+        [Parameter (ParameterSetName = 'Parameter')]
+        [String]$EventLogSource,
+        [Parameter (ParameterSetName = 'Parameter')]
+        [Object]$MailCredential,
+        [Parameter (ParameterSetName = 'ConfigFile', Mandatory = $True)]
+        [ValidateScript({Test-Path -Path $_ -PathType Leaf})]
+        [String]$ConfigFile
+    )
+    BEGIN {
+        If ($ConfigFile) {
+            [xml]$ConfigFile = (Get-Content -Path $ConfigFile)
+            $PSEmailServer = $ConfigFile.Settings.EmailServerSettings.SmtpServer
+            $Port = $ConfigFile.Settings.EmailServerSettings.Port
+            [bool]$UseSsl = [int]$ConfigFile.Settings.EmailServerSettings.UseSsl
+            $From = $ConfigFile.Settings.EmailServerSettings.From
+            
+            $EventLogName = $ConfigFile.Settings.EventLogSettings.EventLogName
+            $EventLogSource = $ConfigFile.Settings.EventLogSettings.EventLogSource
+            $EventInformationID = $ConfigFile.Settings.EventLogSettings.EventLogInformationID
+            $EventWarningID = $ConfigFile.Settings.EventLogSettings.EventLogWarningID
+            
+            $MailCredential = $ConfigFile.Settings.Credentials.MailCredentials
+            
+            [array]$RemindOn = ($ConfigFile.Settings.ScriptSettings.SendPasswordExpirationMail.RemindOn).Split(',')
+            If ($MailCredential) {
+                Import-Module CredentialManager -ErrorVariable +EventLogErrors
+                $MailCredential = Get-StoredCredential -Target $MailCredential
+            }
         }
-        $MinPasswordLength = $FGPasswordPolicy.MinPasswordLength
-        $PasswordHistoryCount = $FGPasswordPolicy.PasswordHistoryCount
-        $ComplexityEnabled = $FGPasswordPolicy.ComplexityEnabled
     }
-    ElseIf (-not $FGPasswordPolicy) {
-        If ($ADUser.PasswordNeverExpires -eq $True) {
-            $DaysUntilExpiration = $Null
-        } ElseIf ($ADUser.PasswordNeverExpires -eq $False) {
-            $DaysUntilExpiration = (($ADUser.PasswordLastSet + $ADPasswordPolicy.MaxPasswordAge) - $Today).Days
-        }
-        $MinPasswordLength = $ADPasswordPolicy.MinPasswordLength
-        $PasswordHistoryCount = $ADPasswordPolicy.PasswordHistoryCount
-        $ComplexityEnabled = $ADPasswordPolicy.ComplexityEnabled
-    }
-    $ADUserProperties = @{
-        'DistinguishedName' = $ADuser.DistinguishedName
-        'Enabled' = $ADuser.Enabled
-        'Name' = $ADuser.Name
-        'GivenName' = $ADuser.GivenName
-        'Surname' = $ADuser.Surname
-        'EmailAddress' = $ADuser.EmailAddress
-        'PasswordNeverExpires' = $ADUser.PasswordNeverExpires
-        'DaysUntilExpiration' = $DaysUntilExpiration
-        'MinPasswordLength' = $MinPasswordLength
-        'PasswordHistoryCount' = $PasswordHistoryCount
-        'ComplexityEnabled' = $ComplexityEnabled
-    }
-    New-Object -TypeName PSObject -Property $ADUserProperties
-}
-
-# Find all users who match the filters specified and then loop through each.
-ForEach-Object -Process {
-
-    # Set a few variables per user for easier usage. This is mostly cosmetic.
-    $PwdLastSet = $_.PasswordLastSet
-    $PwdExpirationDate = $PwdLastSet + $GpoMaxAge
-    $PwdDaysLeft = ($PwdExpirationDate - $Today).days
-    
-    # Check if the days left until the user's password expired is in the array specified.
-    $PwdIntervalHit = $PwdDaysLeft -in $RemindOn
-
-    # If the amount of days left until expiration is in the array, send an email to the user.
-    If ($PwdIntervalHit) {
-
-        $Name = $_.GivenName
-        $To = $_.EmailAddress
-
-        # Changes a few of the texts used in the mail and stores it in the variable.
-        $InXDays = Switch ($PwdDaysLeft) {
-
-            0 {'today'}
-            1 {'in one day'}
-            Default {"in $PwdDaysLeft days"}
-
-        }
+    PROCESS {
+        ForEach-Object -Process {
+            
+            # Check if the days left until the user's password expired is in the array specified.
+            $PwdIntervalHit = $PwdDaysLeft -in $RemindOn
         
-        # Automatically apply or omit the text about complexity, dependant on if the group policy has been set.
-        $ComplexityText = If ($GpoComplexityEnabled) {"<li>The password needs to include 3 of the 4 following categories:</li>
-        <ul><li>At least one <em>lower case</em> letter (a-z)</li>
-        <li>At least one <em>upper case</em> letter (A-Z)</li>
-        <li>At least one <em>number</em> (0-9)</li>
-        <li>At least one <em>special character</em> (!,?,*,~, etc.)</li></ul>"}
-
-        # Store the subject and body into variables for use in the send-mailmessage cmdlet.
-        $Subject = "Reminder: Your password expires $InXDays"
-
-        $Body = "<p>Dear $Name,<br></p>
-        <p>Your password will expire <em>$InXDays</em>. You can change your password by pressing CTRL+ALT+DEL and then choosing the option to reset your password. If you are not at the HEAD OFFICE or BRANCH OFFICE, you can reset your password via the webmail. Click on the gear icon and subsequently on `"Change password`" to change your password.</p>
-        <p>If you have set up your COMPANY email account on other devices such as an iPhone/iPad or an Android device, please change your password on those devices as well.</p>
-        Your new password must adhere to the following requirements:
-        <ul><li>It must be at least <em>$GpoMinLength</em> characters long</li>
-        $ComplexityText
-        <li>It may not resemble the last <em>$GpoPasswordHistory</em> passwords</li></ul>
-        <p>A good password doesn't need to be very complicated. You can always use multiple random words to create a password. The following examples are as strong as any randomly generated password.</p>
-        <ul><li>Correct battery horse staple</li>
-        <li>CORRECTbatteryHORSEstaple?</li>
-        <li>#correct4battery7horse5staple</li>
-        <li>Correct!Battery,horse&staple.</li></ul>
-        <p>If you have questions about or issues with changing your password, please to contact the IT department.</p>
-        <p>Kind regards,</p>
-        <br>
-        <p><br>
-        COMPANY IT department</p>"
-
-        # Splat the attributes for use in the Send-MailMessage cmdlet.
-        $MailAttributes = @{
-
-            To = $To
-            From = $From
-            Subject = $Subject
-            Body = $Body
-            Port = $Port
-            BodyAsHTML = $True
-
-        }
+            # If the amount of days left until expiration is in the array, send an email to the user.
+            If ($PwdIntervalHit) {
         
-        If ($UseSsl) {$MailAttributes += @{UseSsl = $True}}
+                $Name = $_.GivenName
+                $To = $_.EmailAddress
         
-        If ($MailCredential) {$MailAttributes += @{Credential = $MailCredential}}
-
-        # Send the message to the user.
-        Send-MailMessage @MailAttributes -ErrorVariable +EventLogErrors
-
-        # Add a small description to the messages array if an email has been sent.
-        $EventLogMessage += "`n - An email has been sent to $Name as his/her password expires $InXDays."
-
-    }
-
-} -End {
-    
-    # Write to the event log if the logs have been specified
-    If ($EventLogName -and $EventLogSource) {
-
-        # The values here below can be used to have it write to event logs.
-        $WriteEventLogWarning = @{
-    
-            LogName = $EventLogName
-            Source = $EventLogSource
-            EventId = $EventWarningID
-            EntryType = 'Warning'
-            Message = "One or more errors occured while running the Send-PasswordExpirationMail Powershell script. See the errors below:`n`n $EventLogErrors"
-    
+                # Changes a few of the texts used in the mail and stores it in the variable.
+                Switch ($PwdDaysLeft) {
+                    0 {$InXDays = 'today'}
+                    1 {$InXDays = 'in one day'}
+                    Default {"in $PwdDaysLeft days"}
+                }
+                
+                # Automatically apply or omit the text about complexity, dependant on if the group policy has been set.
+                $ComplexityText = If ($GpoComplexityEnabled) {"<li>The password needs to include 3 of the 4 following categories:</li>
+                <ul><li>At least one <em>lower case</em> letter (a-z)</li>
+                <li>At least one <em>upper case</em> letter (A-Z)</li>
+                <li>At least one <em>number</em> (0-9)</li>
+                <li>At least one <em>special character</em> (!,?,*,~, etc.)</li></ul>"}
+        
+                # Store the subject and body into variables for use in the send-mailmessage cmdlet.
+                $Subject = "Reminder: Your password expires $InXDays"
+        
+                $Body = "<p>Dear $Name,<br></p>
+                <p>Your password will expire <em>$InXDays</em>. You can change your password by pressing CTRL+ALT+DEL and then choosing the option to reset your password. If you are not at the HEAD OFFICE or BRANCH OFFICE, you can reset your password via the webmail. Click on the gear icon and subsequently on `"Change password`" to change your password.</p>
+                <p>If you have set up your COMPANY email account on other devices such as an iPhone/iPad or an Android device, please change your password on those devices as well.</p>
+                Your new password must adhere to the following requirements:
+                <ul><li>It must be at least <em>$GpoMinLength</em> characters long</li>
+                $ComplexityText
+                <li>It may not resemble the last <em>$GpoPasswordHistory</em> passwords</li></ul>
+                <p>A good password doesn't need to be very complicated. You can always use multiple random words to create a password. The following examples are as strong as any randomly generated password.</p>
+                <ul><li>Correct battery horse staple</li>
+                <li>CORRECTbatteryHORSEstaple?</li>
+                <li>#correct4battery7horse5staple</li>
+                <li>Correct!Battery,horse&staple.</li></ul>
+                <p>If you have questions about or issues with changing your password, please to contact the IT department.</p>
+                <p>Kind regards,</p>
+                <br>
+                <p><br>
+                COMPANY IT department</p>"
+        
+                # Splat the attributes for use in the Send-MailMessage cmdlet.
+                $MailAttributes = @{
+                    To = $To
+                    From = $From
+                    Subject = $Subject
+                    Body = $Body
+                    Port = $Port
+                    BodyAsHTML = $True
+                }
+                
+                If ($UseSsl) {$MailAttributes += @{UseSsl = $True}}
+                
+                If ($MailCredential) {$MailAttributes += @{Credential = $MailCredential}}
+        
+                # Send the message to the user.
+                Send-MailMessage @MailAttributes -ErrorVariable +EventLogErrors
+        
+                # Add a small description to the messages array if an email has been sent.
+                $EventLogMessage += "`n - An email has been sent to $Name as his/her password expires $InXDays."
+            }
         }
-    
-        $WriteEventLogInformation = @{
-    
-            LogName = $EventLogName
-            Source = $EventLogSource
-            EventId = $EventInformationID
-            EntryType = 'Information'
-            Message = "The Send-PasswordExpirationMail Powershell script ran succesfully.`n $EventLogMessage"
-    
-        }
-    
-        If ($EventLogErrors) {Write-EventLog @WriteEventLogWarning}
-        Else {Write-EventLog @WriteEventLogInformation}
-
     }
-    
+    END {  
+        # Write to the event log if the logs have been specified
+        If ($EventLogName -and $EventLogSource) {
+            # The values here below can be used to have it write to event logs.
+            $WriteEventLogWarning = @{
+                LogName = $EventLogName
+                Source = $EventLogSource
+                EventId = $EventWarningID
+                EntryType = 'Warning'
+                Message = "One or more errors occured while running the Send-PasswordExpirationMail Powershell script. See the errors below:`n`n $EventLogErrors"
+            }
+            $WriteEventLogInformation = @{
+                LogName = $EventLogName
+                Source = $EventLogSource
+                EventId = $EventInformationID
+                EntryType = 'Information'
+                Message = "The Send-PasswordExpirationMail Powershell script ran succesfully.`n $EventLogMessage"
+            }
+            If ($EventLogErrors) {Write-EventLog @WriteEventLogWarning}
+            Else {Write-EventLog @WriteEventLogInformation}
+        }
+    }
 }
