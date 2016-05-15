@@ -82,20 +82,18 @@ $EventLogMessage = @()
 #Import the necessary modules.  
 Import-Module ActiveDirectory -ErrorVariable +EventLogErrors
 
-# Set a few default variables, most of these needn't be changed unless you use fine-grained password policies.
-$ADPasswordPolicy = Get-ADDefaultDomainPasswordPolicy
-$Today = Get-Date 
-
 # The filters used to limit the queried users. Probably enough in most cases.
 $Filter = {(PasswordNeverExpires -eq $False) -and (PasswordExpired -eq $False) -and (pwdLastSet -ne '0') -and (PasswordLastSet -ne "$Null") -and (Enabled -eq $True) -and (Emailaddress -ne "$Null")}
 
-Function Get-PEUsers {
+Function Get-PEUser {
     [CmdletBinding(DefaultParameterSetName = 'Filter')]
     Param (
         [Parameter(ParameterSetName = 'Identity', Mandatory = $True)]
         $Identity,
+
         [Parameter(ParameterSetName = 'Filter')]
         $Filter = '*',
+
         [Parameter(ParameterSetName = 'Filter')]
         $SearchBase = (Get-ADDomain).DistinguishedName
     )
@@ -131,7 +129,7 @@ Function Get-PEUsers {
                 $PasswordHistoryCount = $ADPasswordPolicy.PasswordHistoryCount
                 $ComplexityEnabled = $ADPasswordPolicy.ComplexityEnabled
             }
-            $ADUserProperties = [Ordered]@{
+            $PEUserProperties = [Ordered]@{
                 'DistinguishedName' = $ADuser.DistinguishedName
                 'Enabled' = $ADuser.Enabled
                 'Name' = $ADuser.Name
@@ -144,7 +142,9 @@ Function Get-PEUsers {
                 'PasswordHistoryCount' = $PasswordHistoryCount
                 'ComplexityEnabled' = $ComplexityEnabled
             }
-            New-Object -TypeName PSObject -Property $ADUserProperties
+            $Object = New-Object -TypeName PSObject -Property $PEUserProperties
+            $Object.PSObject.TypeNames.Insert(0,'PE.PEUser')
+            Write-Output $Object
         }
     }
     END {
@@ -154,43 +154,46 @@ Function Get-PEUsers {
 Function Send-PEMailMessage {
     [CmdletBinding()]
     Param (
-        [Parameter (ParameterSetName = 'Parameter', Mandatory = $True, Position = 1)]
-        [Array]$RemindOn,
-        [Parameter (ParameterSetName = 'Parameter', Mandatory = $True, Position = 2)]
+        [Parameter(ValueFromPipeLine, Mandatory = $True, Position = 0)]
+        [ValidateScript({ If (($_ | Get-Member).TypeName -contains 'PE.PEUser') { $True } Else { Throw "$_ is not of the object type PE.PEUser" }})]
+        [Object[]]$PEObject,
+
+        [Parameter (ParameterSetName = 'Parameter', Mandatory = $True)]
+        [Int[]]$RemindOn,
+
+        [Parameter (ParameterSetName = 'Parameter')]
+        [ValidateSet(Name,GivenName,Surname)]
+        $AddresseeNameType = 'Name',
+
+        [Parameter (ParameterSetName = 'Parameter', Mandatory = $True)]
         [String]$SmtpServer,
-        [Parameter (ParameterSetName = 'Parameter', Mandatory = $True, Position = 3)]
+
+        [Parameter (ParameterSetName = 'Parameter', Mandatory = $True)]
         [String]$From,
+
         [Parameter (ParameterSetName = 'Parameter')]
         [ValidateRange(1,65535)]
         [Int]$Port = '25',
+
         [Parameter (ParameterSetName = 'Parameter')]
         [Switch]$UseSsl,
-        [Parameter (ParameterSetName = 'Parameter')]
-        [String]$EventLogName,
-        [Parameter (ParameterSetName = 'Parameter')]
-        [String]$EventLogSource,
+
         [Parameter (ParameterSetName = 'Parameter')]
         [Object]$MailCredential,
+
         [Parameter (ParameterSetName = 'ConfigFile', Mandatory = $True)]
         [ValidateScript({Test-Path -Path $_ -PathType Leaf})]
         [String]$ConfigFile
     )
     BEGIN {
         If ($ConfigFile) {
-            [xml]$ConfigFile = (Get-Content -Path $ConfigFile)
+            [Xml]$ConfigFile = (Get-Content -Path $ConfigFile)
             $PSEmailServer = $ConfigFile.Settings.EmailServerSettings.SmtpServer
             $Port = $ConfigFile.Settings.EmailServerSettings.Port
-            [bool]$UseSsl = [int]$ConfigFile.Settings.EmailServerSettings.UseSsl
+            [Bool]$UseSsl = [Int]$ConfigFile.Settings.EmailServerSettings.UseSsl
             $From = $ConfigFile.Settings.EmailServerSettings.From
-            
-            $EventLogName = $ConfigFile.Settings.EventLogSettings.EventLogName
-            $EventLogSource = $ConfigFile.Settings.EventLogSettings.EventLogSource
-            $EventInformationID = $ConfigFile.Settings.EventLogSettings.EventLogInformationID
-            $EventWarningID = $ConfigFile.Settings.EventLogSettings.EventLogWarningID
-            
             $MailCredential = $ConfigFile.Settings.Credentials.MailCredentials
-            
-            [array]$RemindOn = ($ConfigFile.Settings.ScriptSettings.SendPasswordExpirationMail.RemindOn).Split(',')
+            [Int[]]$RemindOn = ($ConfigFile.Settings.ScriptSettings.SendPasswordExpirationMail.RemindOn).Split(',')
             If ($MailCredential) {
                 Import-Module CredentialManager -ErrorVariable +EventLogErrors
                 $MailCredential = Get-StoredCredential -Target $MailCredential
@@ -198,36 +201,37 @@ Function Send-PEMailMessage {
         }
     }
     PROCESS {
-        ForEach-Object -Process {
-            
-            # Check if the days left until the user's password expired is in the array specified.
-            $PwdIntervalHit = $PwdDaysLeft -in $RemindOn
-        
-            # If the amount of days left until expiration is in the array, send an email to the user.
-            If ($PwdIntervalHit) {
-        
-                $Name = $_.GivenName
-                $To = $_.EmailAddress
-        
-                # Changes a few of the texts used in the mail and stores it in the variable.
-                Switch ($PwdDaysLeft) {
-                    0 {$InXDays = 'today'}
-                    1 {$InXDays = 'in one day'}
-                    Default {"in $PwdDaysLeft days"}
+        ForEach ($PEUser in $PEObject) {
+            If ($PEUser.DaysUntilExpiration -in $RemindOn) {
+                Switch ($AddresseeNameType) {
+                    Name { $Name = $PEUser.Name }
+                    GivenName { $Name = $PEUser.GivenName }
+                    SurName { $Name = $PEUser.SurName }
                 }
-                
-                # Automatically apply or omit the text about complexity, dependant on if the group policy has been set.
-                $ComplexityText = If ($GpoComplexityEnabled) {"<li>The password needs to include 3 of the 4 following categories:</li>
-                <ul><li>At least one <em>lower case</em> letter (a-z)</li>
-                <li>At least one <em>upper case</em> letter (A-Z)</li>
-                <li>At least one <em>number</em> (0-9)</li>
-                <li>At least one <em>special character</em> (!,?,*,~, etc.)</li></ul>"}
-        
+                Switch ($PEUser.DaysUntilExpiration) {
+                    0 { $InDays = 'today' }
+                    1 { $InDays = 'in one day' }
+                    Default { $InDays = "in $($PEUser.DaysUntilExpiration) days" }
+                }
+                Switch ($PEUser.ComplexityEnabled) {
+                    $True { 
+                        $ComplexityText = 
+                        "<li>The password needs to include 3 of the 4 following categories:</li>
+                        <ul><li>At least one <em>lower case</em> letter (a-z)</li>
+                        <li>At least one <em>upper case</em> letter (A-Z)</li>
+                        <li>At least one <em>number</em> (0-9)</li>
+                        <li>At least one <em>special character</em> (!,?,*,~, etc.)</li></ul>"
+                    }
+                    $False { $ComplexityText = $Null }
+                }
+                $To = $_.EmailAddress
+
                 # Store the subject and body into variables for use in the send-mailmessage cmdlet.
-                $Subject = "Reminder: Your password expires $InXDays"
-        
-                $Body = "<p>Dear $Name,<br></p>
-                <p>Your password will expire <em>$InXDays</em>. You can change your password by pressing CTRL+ALT+DEL and then choosing the option to reset your password. If you are not at the HEAD OFFICE or BRANCH OFFICE, you can reset your password via the webmail. Click on the gear icon and subsequently on `"Change password`" to change your password.</p>
+                $Subject = "Reminder: Your password expires $InDays"
+
+                $Body = 
+                "<p>Dear $Name,<br></p>
+                <p>Your password will expire <em>$InDays</em>. You can change your password by pressing CTRL+ALT+DEL and then choosing the option to reset your password. If you are not at the HEAD OFFICE or BRANCH OFFICE, you can reset your password via the webmail. Click on the gear icon and subsequently on `"Change password`" to change your password.</p>
                 <p>If you have set up your COMPANY email account on other devices such as an iPhone/iPad or an Android device, please change your password on those devices as well.</p>
                 Your new password must adhere to the following requirements:
                 <ul><li>It must be at least <em>$GpoMinLength</em> characters long</li>
@@ -253,14 +257,10 @@ Function Send-PEMailMessage {
                     Port = $Port
                     BodyAsHTML = $True
                 }
-                
                 If ($UseSsl) {$MailAttributes += @{UseSsl = $True}}
-                
                 If ($MailCredential) {$MailAttributes += @{Credential = $MailCredential}}
-        
                 # Send the message to the user.
                 Send-MailMessage @MailAttributes -ErrorVariable +EventLogErrors
-        
                 # Add a small description to the messages array if an email has been sent.
                 $EventLogMessage += "`n - An email has been sent to $Name as his/her password expires $InXDays."
             }
