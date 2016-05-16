@@ -1,4 +1,4 @@
-﻿function Connect-Office365 {
+﻿function Connect-Office365Session {
 
     <# 
     .SYNOPSIS 
@@ -18,24 +18,23 @@
     .PARAMETER SharePointOnline
         Logs in to Microsoft SharePoint Online. Requires the tenant name to be specified.
     .PARAMETER TenantName
-        Tenant name. Required to connect to SharePoint Online.
+        Tenant name without the '.onmicrosoft.com' part. Required to connect to SharePoint Online and Skype for Business Online.
     .EXAMPLE 
-        Login-Office365 -Credential $Credential -MsOnline -ExchangeOnline
+        Connect+-Office365Session -Credential $Credential -MsOnline -ExchangeOnline
         Description 
          
         ----------- 
      
         Logs in to Azure AD and Exchange Online.
     .INPUTS 
-    	None. You cannot pipe objects to Login-Office365 
+    	None. You cannot pipe objects to Connect-Office365Session
     .OUTPUTS 
     	None.
     .NOTES 
         Author:   Tony Fortes Ramos 
         Created:  May 02, 2016
-        Created:  May 02, 2016 
     .LINK 
-    	Disconnect-Office365
+    	Disconnect-Office365Session
         Get-PSSession
         New-PSSession
         Import-PSSession 
@@ -55,13 +54,13 @@
         [Parameter()]
         [Switch]$ExchangeOnline,
 
-        [Parameter(Mandatory = $false, ParameterSetName = 'SharePointOnline')]
+        [Parameter(Mandatory = $false, ParameterSetName = 'SkypeSharePoint')]
         [Switch]$SharePointOnline,
 
-        [Parameter()]
+        [Parameter(Mandatory = $false, ParameterSetName = 'SkypeSharePoint')]
         [Switch]$SkypeForBusinessOnline,
 
-        [Parameter(Mandatory = $true, ParameterSetName = 'SharePointOnline')]
+        [Parameter(Mandatory = $true, ParameterSetName = 'SkypeSharePoint')]
         [Parameter(Mandatory = $true, ParameterSetName = 'All')]
         [String]$TenantName,
 
@@ -70,32 +69,32 @@
     )
     Switch ($All) {
         $True { 
-            $MSOnline.IsPresent = $true
-            $ComplianceCenter.IsPresent = $true
-            $ExchangeOnline.IsPresent = $true
-            $SharePointOnline.IsPresent = $true
-            $SkypeForBusinessOnline.IsPresent = $true
+            $MSOnline = $true
+            $ComplianceCenter = $true
+            $ExchangeOnline = $true
+            $SharePointOnline = $true
+            $SkypeForBusinessOnline = $true
         }
     }
     If ($MSOnline) {
-        Write-Verbose 'Testing if the MSOnline module is available.'
+        Write-Verbose 'Testing if the Azure Active Directory (MSOnline) module is available.'
         $testModule = Get-Module -ListAvailable
         If ($testModule.Name -notcontains 'MSOnline') {
-            Write-Verbose 'The MSOnline module is not installed. Please download it from https://msdn.microsoft.com/en-us/library/jj151815.aspx before trying again.'
+            Write-Verbose 'The Azure AD module is not installed. Please download and install it from http://go.microsoft.com/fwlink/p/?linkid=236297 before trying again. Also make sure that the Microsoft Online Services Sign-In Assistant for IT Professionals is installed. Download the Sign-In Assistant from https://www.microsoft.com/en-US/download/details.aspx?id=41950.'
         }
         ElseIf ($testModule.Name -contains 'MSOnline') {
-            Write-Verbose 'The MSOnline module is installed on the system. Importing.'
+            Write-Verbose 'The Azure AD module is installed on the system. Importing.'
             If (-not (Get-Module MSOnline)) {
                 Try {
                     Import-Module MSOnline -DisableNameChecking
-                    Write-Verbose 'The MSOnline module has been imported'
+                    Write-Verbose 'The Azure AD module has been imported'
                 }
                 Catch {
-                    Write-Verbose 'Could not import the MSOnline Module.'
+                    Write-Verbose 'Could not import the Azure AD Module.'
                 }
             }
             ElseIf (Get-Module MSOnline) {
-                Write-Verbose 'The Microsoft MSOnline module has already been imported'
+                Write-Verbose 'The Microsoft Azure AD module has already been imported'
             }
             Write-Verbose 'Connecting to the Microsoft Office 365 services.'
             Try {
@@ -108,11 +107,11 @@
     }
     If ($ComplianceCenter) {
         Write-Verbose 'Testing if there is a connection with the Microsoft Security and Compliance Center.' 
-        $testSession = Get-PSSession
-        If ($testSession.ComputerName -like "*.compliance.protection.outlook.com") {
+        $testSession = (Get-PSSession).where{ $_.ComputerName -like "*.compliance.protection.outlook.com" }
+        If ($testSession) {
             Write-Verbose 'There is already a connection with the Microsoft Security Compliance Center. Skipping the creation of a new session.'
         } 
-        ElseIf ($testSession.ComputerName -notlike "*.compliance.protection.outlook.com") {
+        ElseIf (-not $testSession) {
             Write-Verbose 'There is no existing session. Creating a session to the Microsoft Security and Compliance Center.'
             Try {
                 $ccSession = New-PSSession -ConfigurationName Microsoft.Exchange -ConnectionUri https://ps.compliance.protection.outlook.com/powershell-liveid/ -Credential $Credential -Authentication Basic -AllowRedirection
@@ -126,11 +125,11 @@
     }
     If ($ExchangeOnline) {
         Write-Verbose 'Testing if there is a connection with the Microsoft Exchange Online services.'
-        $testSession = Get-PSSession
-        If ($testSession.ComputerName -contains 'outlook.office365.com') {
+        $testSession = (Get-PSSession).where{ $_.ComputerName -like 'outlook.office365.com' }
+        If ($testSession) {
             Write-Verbose 'There is already a connection with Microsoft Exchange Online services.'
         }
-        ElseIf ($testSession.ComputerName -notcontains 'outlook.office365.com') {
+        ElseIf (-not $testSession) {
             Write-Verbose 'There is no existing session. Creating a session to the Microsoft Exchange Online services.'
             Try {
                 $exchangeSession = New-PSSession -ConfigurationName Microsoft.Exchange -ConnectionUri "https://outlook.office365.com/powershell-liveid/" -Credential $credential -Authentication "Basic" -AllowRedirection
@@ -156,7 +155,7 @@
                     Write-Verbose 'The Microsoft SharePoint Online module has been imported'
                 }
                 Catch {
-                    Write-Verbose 'Could not import the Microsoft SharePoint Online Module.'
+                    Write-Verbose 'Could not import the Microsoft SharePoint Online Module. Check if the shell is run as an administrator.'
                 }
             }
             ElseIf (Get-Module Microsoft.Online.SharePoint.PowerShell) {
@@ -193,14 +192,14 @@
                 Write-Verbose 'The Microsoft Skype for Business Online module has already been imported'
             }
             Write-Verbose 'Connecting to the Microsoft Skype for Business Online services.'
-            $testSession = Get-PSSession
-            If ($testSession.ComputerName -contains "*.online.lync.com") {
+            $testSession = (Get-PSSession).where{ $_.ComputerName -like "*.online.lync.com" }
+            If ($testSession) {
                 Write-Verbose 'There is already a connection with Microsoft Skype for Business Online.'
             }
-            ElseIf ($testSession.ComputerName -notcontains "*.online.lync.com") {
+            ElseIf (-not $testSession) {
                 Write-Verbose 'There is no existing session. Creating a session to the Microsoft Skype for Business Online services.'
                 Try {
-                    $SfboSession = New-CsOnlineSession -Credential $Credential
+                    $SfboSession = New-CsOnlineSession -Credential $Credential -OverrideAdminDomain "$TenantName.onmicrosoft.com"
                     Import-PSSession $sfboSession
                     Write-Verbose 'Successfully connected to Microsoft Skype for Business Online.'
                 }
@@ -212,7 +211,7 @@
     }
 }
 
-function Disconnect-Office365 {
+function Disconnect-Office365Session {
     
     <# 
     .SYNOPSIS 
@@ -230,80 +229,109 @@ function Disconnect-Office365 {
     .PARAMETER All
         Logs out from all Microsoft Office 365 services.
     .EXAMPLE 
-        Logoff-Office365 -ComplianceCenter -SkypeForBusinessOnline
+        Disconnect-Office365Session -ComplianceCenter -SkypeForBusinessOnline
         Description 
          
         ----------- 
      
         Logs off from Security and Compliance Center and Skype for Business Online.
     .INPUTS 
-    	None. You cannot pipe objects to Logoff-Office365 
+    	None. You cannot pipe objects to Disconnect-Office365Session
     .OUTPUTS 
     	None.
     .NOTES 
         Author:   Tony Fortes Ramos 
         Created:  May 02, 2016
-        Created:  May 02, 2016 
     .LINK 
-    	Login-Office365
+    	Connect-Office365Session
         Get-PSSession
         Remove-PSSession 
     #>
     
     [CmdletBinding(DefaultParameterSetName = 'Specific')]
     Param (
-
         [Parameter(ParameterSetName = 'Specific')]
         [Switch]$ComplianceCenter,
+
         [Parameter(ParameterSetName = 'Specific')]
         [Switch]$ExchangeOnline,
+
         [Parameter(ParameterSetName = 'Specific')]
         [Switch]$SharePointOnline,
+
         [Parameter(ParameterSetName = 'Specific')]
         [Switch]$SkypeForBusinessOnline,
+
         [Parameter(ParameterSetName = 'All')]
         [Switch]$All
-
     )
-
-    if ($ComplianceCenter) {
-
-        (Get-PSSession).where{ $_.ComputerName -like "*.compliance.protection.outlook.com" } | Remove-PSSession
-        Write-Verbose 'Removed sessions to Microsoft Compliance Center.'
-
+    Switch ($All) {
+        $True { 
+            $ComplianceCenter = $true
+            $ExchangeOnline = $true
+            $SharePointOnline = $true
+            $SkypeForBusinessOnline = $true
+        }
     }
-    if ($ExchangeOnline) {
-
-        (Get-PSSession).where{ $_.ComputerName -eq 'outlook.office365.com' } | Remove-PSSession
-        Write-Verbose 'Removed sessions to Microsoft Exchange Online.'
-
+    If ($ComplianceCenter) {
+        Write-Verbose 'Testing if there is a session active to Microsoft Security and Compliance Center.'
+        $testSession = (Get-PSSession).where{ $_.ComputerName -like "*.compliance.protection.outlook.com" } 
+        If ($testSession) {
+            Write-Verbose 'There are active sessions to the Microsoft Security and Compliance Center. Starting the removal of the active sessions.'
+            Try {
+                $testSession | Remove-PSSession
+                Write-Verbose 'Removed all sessions to the Microsoft Security and Compliance Center.'
+            }
+            Catch {
+                Write-Verbose 'Could not remove sessions to the Microsoft Security and Compliance Center.'
+            }
+        }
+        ElseIf (-not $testSession) {
+            Write-Verbose 'There are no active sessions to the Microsoft Security and Compliance Center.'
+        }
     }
-    if ($SharePointOnline) {
-
-        Disconnect-SPOService
-        Write-Verbose 'Removed sessions to Microsoft Sharepoint Online.'
-
+    If ($ExchangeOnline) {
+        Write-Verbose 'Testing if there is a session active to Microsoft Exchange Online.'
+        $testSession = (Get-PSSession).where{ $_.ComputerName -like 'outlook.office365.com' } 
+        If ($testSession) {
+            Write-Verbose 'There are active sessions to the Microsoft Exchange Online services. Starting the removal of the active sessions.'
+            Try {
+                $testSession | Remove-PSSession
+                Write-Verbose 'Removed all sessions to the Microsoft Exchange Online services.'
+            }
+            Catch {
+                Write-Verbose 'Could not remove sessions to the Microsoft Exchange Online services.'
+            }
+        }
+        ElseIf (-not $testSession) {
+            Write-Verbose 'There are no active sessions to the Microsoft Exchange Online services.'
+        }
+    }
+    If ($SharePointOnline) {
+        Write-Verbose 'Removing all sessions to Microsoft Sharepoint Online.'
+        Try {
+            Disconnect-SPOService
+            Write-Verbose 'Removed all sessions to Microsoft Sharepoint Online.'
+        }
+        Catch {
+            Write-Verbose 'There were no connections to SharePoint Online, or the sessions could not be disconnected.'
+        }
     }
     if ($SkypeForBusinessOnline) {
-
-        (Get-PSSession).where{ $_.ComputerName -like "*.online.lync.com" } | Remove-PSSession
-        Write-Verbose 'Removed sessions to Microsoft Skype for Business Online.'
-
+        Write-Verbose 'Testing if there is a session active to Microsoft Skype for Business Online.'
+        $testSession = (Get-PSSession).where{ $_.ComputerName -like "*.online.lync.com" }
+        If ($testSession) {
+            Write-Verbose 'There are active sessions to the Microsoft Skype for Business Online services. Starting the removal of the active sessions.'
+            Try {
+                $testSession | Remove-PSSession
+                Write-Verbose 'Removed all sessions to the Microsoft Skype for Business Online services.'
+            }
+            Catch {
+                Write-Verbose 'Could not remove sessions to the Microsoft Skype for Business Online services.'
+            }
+        }
+        ElseIf (-not $testSession) {
+            Write-Verbose 'There are no active sessions to Microsoft Skype for Business Online.'
+        }
     }
-    if ($All) {
-
-        (Get-PSSession).where{ $_.ComputerName -like "*.compliance.protection.outlook.com" } | Remove-PSSession
-        Write-Verbose 'Removed sessions to Microsoft Compliance Center.'
-
-        (Get-PSSession).where{ $_.ComputerName -eq 'outlook.office365.com' } | Remove-PSSession
-        Write-Verbose 'Removed sessions to Microsoft Exchange Online.'
-
-        Disconnect-SPOService -ErrorAction SilentlyContinue
-        Write-Verbose 'Removed sessions to Microsoft Sharepoint Online.'
-
-        (Get-PSSession).where{ $_.ComputerName -like "*.online.lync.com" } | Remove-PSSession
-        Write-Verbose 'Removed sessions to Microsoft Skype for Business Online.'
-
-    }
-
 }
