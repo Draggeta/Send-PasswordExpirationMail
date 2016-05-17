@@ -1,5 +1,4 @@
-﻿function Connect-Office365Session {
-
+﻿Function Connect-Office365Session {
     <# 
     .SYNOPSIS 
         Log in to Office 365 services. 
@@ -39,7 +38,6 @@
         New-PSSession
         Import-PSSession 
     #>
-
     [CmdletBinding(DefaultParameterSetName = 'None')]
     param(
         [Parameter(Mandatory = $true)]
@@ -211,8 +209,7 @@
     }
 }
 
-function Disconnect-Office365Session {
-    
+Function Disconnect-Office365Session {
     <# 
     .SYNOPSIS 
         Log out from Office 365 services. 
@@ -247,7 +244,6 @@ function Disconnect-Office365Session {
         Get-PSSession
         Remove-PSSession 
     #>
-    
     [CmdletBinding(DefaultParameterSetName = 'Specific')]
     Param (
         [Parameter(ParameterSetName = 'Specific')]
