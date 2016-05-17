@@ -61,8 +61,7 @@
         .INPUTS
         	None. You cannot pipe objects to New-O365RestCalendarItem.
         .OUTPUTS
-        	None. New-O365RestCalendarItem does not output.
-        .NOTES
+        	New-O365RestCalendarItem outputs the response from the server.
             Author:   Tony Fortes Ramos
             Created:  May 15, 2016
         .LINK
@@ -88,31 +87,31 @@
         $Location,
 
         [Parameter(Mandatory = $True)]
-        $StartDate,
+        [DateTime]$StartDate = (Get-Date),
         
         [Parameter()]
-        [ValidateScript({ $_ -in ([System.TimeZoneInfo]::GetSystemTimeZones()).id })]
-        [String]$StartTimeZone = (Get-WmiObject -Class win32_timezone).StandardName,
+        [ValidateScript({ [System.TimeZoneInfo]::FindSystemTimeZoneById($_) })]
+        [String]$StartTimeZone = [System.Timezone]::CurrentTimeZone.StandardName,
         
         [Parameter(Mandatory = $True)]
-        $EndDate,
+        [DateTime]$EndDate = (Get-Date).AddMinutes(30),
         
         [Parameter()]
-        [ValidateScript({ $_ -in ([System.TimeZoneInfo]::GetSystemTimeZones()).id })]
-        [String]$EndTimeZone = (Get-WmiObject -Class win32_timezone).StandardName,
+        [ValidateScript({ [System.TimeZoneInfo]::FindSystemTimeZoneById($_) })]
+        [String]$EndTimeZone = [System.Timezone]::CurrentTimeZone.StandardName,
         
         [Parameter()]
         [Switch]$AllDay,
         
         [Parameter()]
         [ValidateSet('Free','WorkingElsewhere','Tentative','Busy','Away')]
-        $ShowAs,
+        [String]$ShowAs,
         
         [Parameter()]
         [MailAddress]$UserPrincipalName,
 
         [Parameter(Mandatory = $True)]
-        [PSObject]$Credential = (Get-Credential)
+        [PSCredential]$Credential = (Get-Credential)
     )
     BEGIN {
         If (-not $UserPrincipalName) {
@@ -129,6 +128,31 @@
         }
     }
     PROCESS {
+        $StartTimeZoneObject = [System.TimeZoneInfo]::FindSystemTimeZoneById($StartTimeZone)
+        $StartDateTimeZone = [System.TimeZoneInfo]::ConvertTimeFromUtc((Get-Date -Date $StartDate).ToUniversalTime(), $StartTimeZoneObject)
+        Switch ($StartDateTimeZone.IsDaylightSavingTime()) {
+            $True { $StartDSTOffset = 1 }
+            $False { $StartDSTOffset = 0 }
+        }
+        $StartCurrentHourOffset = ($StartTimeZoneObject.BaseUtcOffset.Hours + $StartDSTOffset).ToString("00")
+        $StartCurrentMinuteOffset = [Math]::Abs($StartTimeZoneObject.BaseUtcOffset.Minutes).ToString("00")
+        Switch ($StartCurrentHourOffset) {
+            { $_ -lt 0} { $StartTimeZoneOffset = "$($StartCurrentHourOffset):$($StartCurrentMinuteOffset)" }
+            { $_ -ge 0} { $StartTimeZoneOffset = "+$($StartCurrentHourOffset):$($StartCurrentMinuteOffset)" }
+        }
+        $StartFormat = "yyyy-MM-ddTHH:mm:ss.fffffff$StartTimeZoneOffset"
+        $EndTimeZoneObject = [System.TimeZoneInfo]::FindSystemTimeZoneById($EndTimeZone)
+        Switch ($EndDate.IsDaylightSavingTime()) {
+            $True { $EndDSTOffset = 1 }
+            $False { $EndDSTOffset = 0 }
+        }
+        $EndCurrentHourOffset = ($EndTimeZoneObject.BaseUtcOffset.Hours + $EndDSTOffset).ToString("00")
+        $EndCurrentMinuteOffset = [Math]::Abs($EndTimeZoneObject.BaseUtcOffset.Minutes).ToString("00")
+        Switch ($EndCurrentHourOffset) {
+            { $_ -lt 0} { $EndTimeZoneOffset = "$($EndCurrentHourOffset):$($EndCurrentMinuteOffset)" }
+            { $_ -ge 0} { $EndTimeZoneOffset = "+$($EndCurrentHourOffset):$($EndCurrentMinuteOffset)" }
+        }
+        $EndFormat = "yyyy-MM-ddTHH:mm:ss.fffffff$EndTimeZoneOffset"
         Switch ($AsHTML) {
             $False { $NoteContentType = 'Text' }
             $True { $NoteContentType = 'HTML' }
@@ -136,16 +160,16 @@
         }
         Switch ($AllDay) {
             $False { 
-                $StartDate = Get-Date $StartDate -Format o
-                $EndDate = Get-Date $EndDate -Format o
+                $Start = Get-Date $StartDate -Format $StartFormat
+                $End = Get-Date $EndDate -Format $EndFormat
             }
             $True {
-                $StartDate = Get-Date $StartDate.Date -Format o
-                $EndDate = Get-Date $EndDate.Date -Format o
+                $Start = Get-Date $StartDate.Date -Format $StartFormat
+                $End = Get-Date $EndDate.Date -Format $EndFormat
             }
             Default {
-                $StartDate = Get-Date $StartDate -Format o
-                $EndDate = Get-Date $EndDate -Format o
+                $Start = Get-Date $StartDate -Format $StartFormat
+                $End = Get-Date $EndDate -Format $EndFormat
             }
         }
         $BodyContent = If ($Note) {
@@ -166,9 +190,9 @@
         $Body = @{
             Subject = $Subject
             Body = $BodyContent
-            Start = $StartDate
+            Start = $Start
             StartTimeZone = $StartTimeZone
-            End = $EndDate
+            End = $End
             EndTimeZone = $EndTimeZone
             Attendees = @(
                 $AttendeesProperties
@@ -181,7 +205,7 @@
             ShowAs = $ShowAs
             IsAllDay = $AllDay.IsPresent
         }
-        (ConvertTo-Json $Body -Depth 10)
+
         Invoke-RestMethod -Uri $Uri -Credential $Credential -Method Post -ContentType $ContentType -Headers $Headers -Body (ConvertTo-Json $Body -Depth 10)
     }
     END {
@@ -231,8 +255,8 @@ Function New-O365RestAttendee {
     PROCESS {
         ForEach ($Address in $EmailAddress){
             $Properties = @{
-                Name = $Address
-                EmailAddress = $Address
+                Name = $Address.Address
+                EmailAddress = $Address.Address
                 Type = $Type
             }
             $Object = New-Object -TypeName PSObject -Property $Properties
@@ -242,55 +266,3 @@ Function New-O365RestAttendee {
     END {
     }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-$body = @{
-    Message = @{
-        Subject = "Meet for lunch?"
-        Body = @{
-            ContentType = "Text"
-            Content = "The new cafeteria is open."
-        }
-        ToRecipients = @(
-            @{
-                EmailAddress = @{
-                    Address = "tony.fortesramos@ogd.nl"
-                }
-            }
-        )
-        Attachments = @(
-        )
-    }
-    SaveToSentItems = $false
-}
-
-Invoke-RestMethod -Uri "https://outlook.office365.com/api/v1.0/me/sendmail" -Credential $cred `
--Method Post -ContentType $contentType -Headers $headers  `
--Body (ConvertTo-Json $body -Depth 10)
-
-$body= @{ 
-    IsRead = $false 
-}
-
-Invoke-RestMethod -Uri "https://outlook.office365.com/api/v1.0/Users('ogdadmin@webster.nl')/Messages('AAMkAGJkMGI2OTk5LTI0Y2EtNGJjMS04N2JhLTc1ZjVkM2ViNmZiZABGAAAAAACvp4Afb7WjS6fnU1giKmuJBwCV5FnB3-AASKaaYis7O-b7AAAAqOtSAACzQt-LRvQZQ5c5jf_UxK6iAAB8T_wPAAA=')" -Credential $cred `
--Method Patch -ContentType $contentType `
--Body (ConvertTo-Json $body)
-
-Invoke-RestMethod -Uri "https://outlook.office365.com/api/v1.0/me/Events('AAMkAGJkMGI2OTk5LTI0Y2EtNGJjMS04N2JhLTc1ZjVkM2ViNmZiZABGAAAAAACvp4Afb7WjS6fnU1giKmuJBwCV5FnB3-AASKaaYis7O-b7AAAAqOtbAACzQt-LRvQZQ5c5jf_UxK6iAAB-Vr18AAA=')" -Credential $cred `
--Method Delete -ContentType $contentType
-
-        Start = $(Get-Date -Format o)
-        StartTimeZone = "W. Europe Standard Time"
-        End = $(Get-Date).AddHours(2).ToString("yyyy-MM-dd\THH:mm:ss\+02:00")
-
-$test = Invoke-RestMethod -Uri "https://outlook.office365.com/api/v1.0/me/calendarview?startDateTime=2016-05-15T01:00:00Z&endDateTime=2016-05-16T23:00:00Z" -Credential $credential
