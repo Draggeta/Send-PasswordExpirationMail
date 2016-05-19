@@ -19,7 +19,7 @@
     .PARAMETER TenantName
         Tenant name without the '.onmicrosoft.com' part. Required to connect to SharePoint Online and Skype for Business Online.
     .EXAMPLE 
-        Connect+-Office365Session -Credential $Credential -MsOnline -ExchangeOnline
+        Connect-Office365Session -Credential $Credential -MsOnline -ExchangeOnline
         Description 
          
         ----------- 
@@ -44,7 +44,7 @@
         [PsCredential]$Credential = (Get-Credential),
 
         [Parameter()]
-        [Switch]$MSOnline,
+        [Switch]$AzureAD,
         
         [Parameter()]
         [Switch]$Azure,
@@ -94,262 +94,154 @@
         $testModule = Get-Module -ListAvailable
     }
     PROCESS {
-        If ($MSOnline) {
-            Write-Verbose 'Testing if the Azure Active Directory (MSOnline) module is available.'
-            If ($testModule.Name -notcontains 'MSOnline') {
-                Write-Verbose 'The Azure AD module is not installed. Please download and install it from http://go.microsoft.com/fwlink/p/?linkid=236297 before trying again. Also make sure that the Microsoft Online Services Sign-In Assistant for IT Professionals is installed. Download the Sign-In Assistant from https://www.microsoft.com/en-US/download/details.aspx?id=41950.'
+        If ($AzureAD) {
+            $Name = 'Azure Active Directory'
+            $Module = 'MSOnline'
+            If (-not (Get-Module -Name $Module -ListAvailable)) {
+                Write-Verbose "The $Name module is not installed."
             }
-            ElseIf ($testModule.Name -contains 'MSOnline') {
-                Write-Verbose 'The Azure AD module is installed on the system. Importing.'
-                If (-not (Get-Module MSOnline)) {
-                    Try {
-                        Import-Module MSOnline -DisableNameChecking
-                        Write-Verbose 'The Azure AD module has been imported'
-                    }
-                    Catch {
-                        Write-Verbose 'Could not import the Azure AD Module.'
-                    }
-                }
-                ElseIf (Get-Module MSOnline) {
-                    Write-Verbose 'The Microsoft Azure AD module has already been imported'
-                }
-                Write-Verbose 'Connecting to the Microsoft Office 365 services.'
+            Else {
+                Import-Module $Module -DisableNameChecking
                 Try {
                     Connect-MsolService -Credential $Credential
                 }
                 Catch {
-                    Write-Warning 'Could not connect to Microsoft Office 365.'
+                    Write-Verbose "There was an error connecting to $Name."
                 }
             }
         }
         If ($Azure) {
-            Write-Verbose 'Testing if the Azure module is available.'
-            If ($testModule.Name -notcontains 'Azure') {
-                Write-Verbose 'The Azure module is not installed. Please download it from https://www.microsoft.com/en-us/download/details.aspx?id=35588 before trying again.'
+            $Name = 'Azure Classic'
+            $Module = 'Azure'
+            If (-not (Get-Module -Name $Module -ListAvailable)) {
+                Write-Verbose "The $Name module is not installed."
             }
-            ElseIf ($testModule.Name -contains 'Azure') {
-                Write-Verbose 'The Azure module is installed on the system. Importing.'
-                If (-not (Get-Module Azure)) {
-                    Try {
-                        Import-Module Azure -DisableNameChecking
-                        Write-Verbose 'The Azure module has been imported'
-                    }
-                    Catch {
-                        Write-Verbose 'Could not import the Azure Module. Check if the shell is run as an administrator.'
-                    }
+            Else {
+                Import-Module $Module -DisableNameChecking
+                Try {
+                    Add-AzureAccount -Credential $Credential
                 }
-                ElseIf (Get-Module Azure) {
-                    Write-Verbose 'The Azure module has already been imported'
-                }
-                Write-Verbose 'Testing if there is a connection with the Azure Classic services.'
-                $testSession = Get-AzureAccount
-                If ($testSession) {
-                    Write-Verbose 'There is already a connection with Azure Classic services.'
-                }
-                ElseIf (-not $testSession) {
-                    Write-Verbose 'There is no existing session. Creating a session to the Azure Classic services.'
-                    Try {
-                        Add-AzureAccount -Credential $Credential
-                        Write-Verbose 'Successfully connected to Azure Classic.'
-                    }
-                    Catch {
-                        Write-Verbose 'There was an error connecting to the Azure Classic services.'
-                    }
+                Catch {
+                    Write-Verbose "There was an error connecting to $Name."
                 }
             }
         }
         If ($AzureRM) {
-            Write-Verbose 'Testing if the Azure RM module is available.'
-            If ($testModule.Name -notcontains 'AzureRM') {
-                Write-Verbose 'The Azure RM module is not installed. Please download it from https://www.microsoft.com/en-us/download/details.aspx?id=35588 before trying again.'
+            $Name = 'Azure Resource Manager'
+            $Module = 'AzureRM'
+            If (-not (Get-Module -Name $Module -ListAvailable)) {
+                Write-Verbose "The $Name module is not installed."
             }
-            ElseIf ($testModule.Name -contains 'AzureRM') {
-                Write-Verbose 'The Azure RM module is installed on the system. Importing.'
-                If (-not (Get-Module AzureRM)) {
-                    Try {
-                        Import-Module AzureRM -DisableNameChecking
-                        Write-Verbose 'The Azure RM module has been imported'
-                    }
-                    Catch {
-                        Write-Verbose 'Could not import the Azure RM Module. Check if the shell is run as an administrator.'
-                    }
+            Else {
+                Import-Module $Module -DisableNameChecking
+                Try {
+                    Login-AzureRmAccount -Credential $Credential
                 }
-                ElseIf (Get-Module AzureRM) {
-                    Write-Verbose 'The Azure RM module has already been imported'
-                }
-                $testSession = Get-AzureRmContext
-                If ($testSession) {
-                    Write-Verbose 'There is already a connection with Azure RM services.'
-                }
-                ElseIf (-not $testSession) {
-                    Write-Verbose 'There is no existing session. Creating a session to the Azure RM services.'
-                    Try {
-                        Login-AzureRmAccount -Credential $Credential
-                        Write-Verbose 'Successfully connected to Azure RM.'
-                    }
-                    Catch {
-                        Write-Verbose 'There was an error connecting to the Azure RM services.'
-                    }
+                Catch {
+                    Write-Verbose "There was an error connecting to $Name."
                 }
             }
         }
         If ($AzureRMS) {
-            Write-Verbose 'Testing if the Azure RMS module is available.'
-            If ($testModule.Name -notcontains 'AADRM') {
-                Write-Verbose 'The Azure RMS module is not installed. Please download it from https://www.microsoft.com/en-us/download/details.aspx?id=35588 before trying again.'
+            $Name = 'Azure Rights Management Service'
+            $Module = 'AADRM'
+            If (-not (Get-Module -Name $Module -ListAvailable)) {
+                Write-Verbose "The $Name module is not installed."
             }
-            ElseIf ($testModule.Name -contains 'AADRM') {
-                Write-Verbose 'The Azure RMS module is installed on the system. Importing.'
-                If (-not (Get-Module AADRM)) {
-                    Try {
-                        Import-Module AADRM -DisableNameChecking
-                        Write-Verbose 'The Azure RMS module has been imported'
-                    }
-                    Catch {
-                        Write-Verbose 'Could not import the Azure RMS Module. Check if the shell is run as an administrator.'
-                    }
-                }
-                ElseIf (Get-Module AADRM) {
-                    Write-Verbose 'The Azure RMS module has already been imported'
-                }
-                Write-Verbose 'Connecting to the Azure RMS services.'
+            Else {
+                Import-Module $Module -DisableNameChecking
                 Try {
                     Connect-AadrmService -Credential $Credential
-                    Write-Verbose 'Successfully connected to Azure RMS.'
                 }
                 Catch {
-                    Write-Verbose 'There was an error connecting to the Azure RMS services.'
+                    Write-Verbose "There was an error connecting to $Name."
                 }
             }
         }
         If ($ComplianceCenter) {
-            Write-Verbose 'Testing if there is a connection with the Microsoft Security and Compliance Center.' 
-            $testSession = (Get-PSSession).where{ $_.ComputerName -like "*.compliance.protection.outlook.com" }
-            If ($testSession) {
-                Write-Verbose 'There is already a connection with the Microsoft Security Compliance Center. Skipping the creation of a new session.'
+            $Name = 'Security and Compliance Center'
+            $Module = 'ComplianceCenter'
+            $ConnectionUri = 'https://ps.compliance.protection.outlook.com/powershell-liveid/'
+            If (Get-PSSession -Name $Module -ErrorAction SilentlyContinue) {
+                Write-Verbose "There is already a connection with $Name. Skipping the creation of a new session."
             } 
-            ElseIf (-not $testSession) {
-                Write-Verbose 'There is no existing session. Creating a session to the Microsoft Security and Compliance Center.'
+            Else {
                 Try {
-                    $ccSession = New-PSSession -ConfigurationName Microsoft.Exchange -ConnectionUri https://ps.compliance.protection.outlook.com/powershell-liveid/ -Credential $Credential -Authentication Basic -AllowRedirection
-                    Import-PSSession $ccSession -Prefix CC
-                    Write-Verbose 'Successfully connected to the Microsoft Security and Compliance Center.'
+                    $CcSession = New-PSSession -ConfigurationName Microsoft.Exchange -ConnectionUri $ConnectionUri -Name $Module -Credential $Credential -Authentication Basic -AllowRedirection
+                    Import-PSSession $CcSession -DisableNameChecking -Prefix CC
                 }
                 Catch {
-                    Write-Verbose 'There was an error connecting to the Microsoft Security and Compliance Center.'
+                    Write-Verbose "There was an error connecting to $Name."
                 }        
             }
         }
         If ($ExchangeOnline) {
-            Write-Verbose 'Testing if there is a connection with the Microsoft Exchange Online services.'
-            $testSession = (Get-PSSession).where{ $_.ComputerName -like 'outlook.office365.com' }
-            If ($testSession) {
-                Write-Verbose 'There is already a connection with Microsoft Exchange Online services.'
-            }
-            ElseIf (-not $testSession) {
-                Write-Verbose 'There is no existing session. Creating a session to the Microsoft Exchange Online services.'
+            $Name = 'Exchange Online'
+            $Module = 'ExchangeOnline'
+            $ConnectionUri = 'https://outlook.office365.com/powershell-liveid/'
+            If (Get-PSSession -Name $Module -ErrorAction SilentlyContinue) {
+                Write-Verbose "There is already a connection with $Name. Skipping the creation of a new session."
+            } 
+            Else {
                 Try {
-                    $exchangeSession = New-PSSession -ConfigurationName Microsoft.Exchange -ConnectionUri "https://outlook.office365.com/powershell-liveid/" -Credential $credential -Authentication "Basic" -AllowRedirection
-                    Import-PSSession $exchangeSession -DisableNameChecking
-                    Write-Verbose 'Successfully connected to Microsoft Exchange Online.'
+                    $EoSession = New-PSSession -ConfigurationName Microsoft.Exchange -ConnectionUri $ConnectionUri -Name $Module -Credential $Credential -Authentication Basic -AllowRedirection
+                    Import-PSSession $EoSession -DisableNameChecking -Prefix CC
                 }
                 Catch {
-                    Write-Verbose 'There was an error connecting to the Microsoft Exchange Online services.'
-                }
+                    Write-Verbose "There was an error connecting to $Name."
+                }        
             }
         }
         If ($SharePointDevPNP) {
-            Write-Verbose 'Testing if the Microsoft SharePoint Office Dev PNP module is available.'
-            If ($testModule.Name -notcontains 'OfficeDevPnP.PowerShell.V16.Commands') {
-                Write-Verbose 'The Microsoft SharePoint Office Dev PNP module is not installed. Please download it from https://www.microsoft.com/en-us/download/details.aspx?id=35588 before trying again.'
+            $Name = 'SharePoint Office Dev PNP'
+            $Module = 'OfficeDevPnP.PowerShell.V16.Commands'
+            If (-not (Get-Module -Name $Module -ListAvailable)) {
+                Write-Verbose "The $Name module is not installed."
             }
-            ElseIf ($testModule.Name -contains 'OfficeDevPnP.PowerShell.V16.Commands') {
-                Write-Verbose 'The Microsoft SharePoint Office Dev PNP module is installed on the system. Importing.'
-                If (-not (Get-Module OfficeDevPnP.PowerShell.V16.Commands)) {
-                    Try {
-                        Import-Module OfficeDevPnP.PowerShell.V16.Commands -DisableNameChecking
-                        Write-Verbose 'The Microsoft SharePoint Office Dev PNP module has been imported'
-                    }
-                    Catch {
-                        Write-Verbose 'Could not import the Microsoft SharePoint Office Dev PNP Module. Check if the shell is run as an administrator.'
-                    }
-                }
-                ElseIf (Get-Module OfficeDevPnP.PowerShell.V16.Commands) {
-                    Write-Verbose 'The Microsoft SharePoint Office Dev PNP module has already been imported'
-                }
-                Write-Verbose 'Connecting to the Microsoft SharePoint Office Dev PNP services.'
+            Else {
+                Import-Module $Module -DisableNameChecking
                 Try {
                     Connect-SPOnline -Url "https://$TenantName-admin.sharepoint.com" -Credential $Credential
-                    Write-Verbose 'Connected to the Microsoft SharePoint Office Dev PNP services.'
                 }
                 Catch {
-                    Write-Verbose 'Could not connect to Microsoft SharePoint Office Dev PNP.'
+                    Write-Verbose "There was an error connecting to $Name."
                 }
             }
         }
         If ($SharePointOnline) {
-            Write-Verbose 'Testing if the Microsoft SharePoint Online module is available.'
-            If ($testModule.Name -notcontains 'Microsoft.Online.SharePoint.PowerShell') {
-                Write-Verbose 'The Microsoft SharePoint Online module is not installed. Please download it from https://www.microsoft.com/en-us/download/details.aspx?id=35588 before trying again.'
+            $Name = 'SharePoint Online'
+            $Module = 'Microsoft.Online.SharePoint.PowerShell'
+            If (-not (Get-Module -Name $Module -ListAvailable)) {
+                Write-Verbose "The $Name module is not installed."
             }
-            ElseIf ($testModule.Name -contains 'Microsoft.Online.SharePoint.PowerShell') {
-                Write-Verbose 'The Microsoft SharePoint Online module is installed on the system. Importing.'
-                If (-not (Get-Module Microsoft.Online.SharePoint.PowerShell)) {
-                    Try {
-                        Import-Module Microsoft.Online.SharePoint.PowerShell -DisableNameChecking
-                        Write-Verbose 'The Microsoft SharePoint Online module has been imported'
-                    }
-                    Catch {
-                        Write-Verbose 'Could not import the Microsoft SharePoint Online Module. Check if the shell is run as an administrator.'
-                    }
-                }
-                ElseIf (Get-Module Microsoft.Online.SharePoint.PowerShell) {
-                    Write-Verbose 'The Microsoft SharePoint Online module has already been imported'
-                }
-                Write-Verbose 'Connecting to the Microsoft SharePoint Online services.'
+            Else {
+                Import-Module $Module -DisableNameChecking
                 Try {
-                    Connect-SPOService -Url "https://$TenantName-admin.sharepoint.com" -Credential $Credential
-                    Write-Verbose 'Connected to the Microsoft SharePoint Online services.'
+                    Connect-SPOnline -Url "https://$TenantName-admin.sharepoint.com" -Credential $Credential
                 }
                 Catch {
-                    Write-Verbose 'Could not connect to Microsoft SharePoint Online.'
+                    Write-Verbose "There was an error connecting to $Name."
                 }
             }
         }
         If ($SkypeForBusinessOnline) {
-            Write-Verbose 'Testing if the Microsoft Skype for Business Online module is available.'
-            If ($testModule.Name -notcontains 'SkypeOnlineConnector') {
-                Write-Verbose 'The Microsoft Skype for Business Online module is not installed. Please download it from https://www.microsoft.com/en-us/download/details.aspx?id=39366 before trying again.'
+            $Name = 'Skype for Business Online'
+            $Module = 'SkypeOnlineConnector'
+            If (-not (Get-Module -Name $Module -ListAvailable)) {
+                Write-Verbose "The $Name module is not installed."
             }
-            ElseIf ($testModule.Name -contains 'SkypeOnlineConnector') {
-                Write-Verbose 'The Microsoft Skype for Business Online module is installed on the system. Importing.'
-                If (-not (Get-Module SkypeOnlineConnector)) {
-                    Try {
-                        Import-Module SkypeOnlineConnector -DisableNameChecking
-                        Write-Verbose 'The Microsoft Skype for Business Online module has been imported'
-                    }
-                    Catch {
-                        Write-Verbose 'Could not import the Microsoft Skype for Business Online Module.'
-                    }
+            ElseIf (Get-PSSession -Name $Module -ErrorAction SilentlyContinue) {
+                Write-Verbose "There is already a connection with $Name. Skipping the creation of a new session."
+            }
+            Else {
+                Import-Module $Module -DisableNameChecking
+                Try {
+                    $SfboSession = New-CsOnlineSession -Credential $Credential -OverrideAdminDomain "$TenantName.onmicrosoft.com"
+                    $SfboSession.Name = $Module
+                    Import-PSSession $SfboSession
                 }
-                ElseIf (Get-Module SkypeOnlineConnector) {
-                    Write-Verbose 'The Microsoft Skype for Business Online module has already been imported'
-                }
-                Write-Verbose 'Connecting to the Microsoft Skype for Business Online services.'
-                $testSession = (Get-PSSession).where{ $_.ComputerName -like "*.online.lync.com" }
-                If ($testSession) {
-                    Write-Verbose 'There is already a connection with Microsoft Skype for Business Online.'
-                }
-                ElseIf (-not $testSession) {
-                    Write-Verbose 'There is no existing session. Creating a session to the Microsoft Skype for Business Online services.'
-                    Try {
-                        $SfboSession = New-CsOnlineSession -Credential $Credential -OverrideAdminDomain "$TenantName.onmicrosoft.com"
-                        Import-PSSession $sfboSession
-                        Write-Verbose 'Successfully connected to Microsoft Skype for Business Online.'
-                    }
-                    Catch {
-                        Write-Verbose 'There was an error connecting to the Microsoft Skype for Business Online services.'
-                    }
+                Catch {
+                    Write-Verbose "There was an error connecting to $Name."
                 }
             }
         }
@@ -434,101 +326,72 @@ Function Disconnect-Office365Session {
     }
     PROCESS {
         If ($Azure) {
-            Write-Verbose 'Testing if there is a session active to Microsoft Security and Compliance Center.'
-            $testSession = Get-AzureAccount
-            If ($testSession) {
-                Write-Verbose 'There are active sessions to the Microsoft Security and Compliance Center. Starting the removal of the active sessions.'
+            $Name = 'Azure Classic'
+            If (Get-AzureAccount) {
                 Try {
-                    $testSession | Remove-AzureAccount
-                    Write-Verbose 'Removed all sessions to the Microsoft Security and Compliance Center.'
+                    Remove-AzureAccount -Name (Get-AzureAccount).Id -Confirm $false
                 }
                 Catch {
-                    Write-Verbose 'Could not remove sessions to the Microsoft Security and Compliance Center.'
+                    Write-Verbose "Could not remove sessions to $Name."
                 }
-            }
-            ElseIf (-not $testSession) {
-                Write-Verbose 'There are no active sessions to the Microsoft Security and Compliance Center.'
             }
         }
         If ($AzureRMS) {
-            Write-Verbose 'Removing all sessions to Microsoft Sharepoint Online.'
+            $Name = 'Azure Rights Management Service'
             Try {
                 Disconnect-AadrmService
-                Write-Verbose 'Removed all sessions to Microsoft Sharepoint Online.'
             }
             Catch {
-                Write-Verbose 'There were no connections to SharePoint Online, or the sessions could not be disconnected.'
+                Write-Verbose "Could not remove sessions to $Name."
             }
         }
         If ($ComplianceCenter) {
-            Write-Verbose 'Testing if there is a session active to Microsoft Security and Compliance Center.'
-            $testSession = (Get-PSSession).where{ $_.ComputerName -like "*.compliance.protection.outlook.com" } 
-            If ($testSession) {
-                Write-Verbose 'There are active sessions to the Microsoft Security and Compliance Center. Starting the removal of the active sessions.'
-                Try {
-                    $testSession | Remove-PSSession
-                    Write-Verbose 'Removed all sessions to the Microsoft Security and Compliance Center.'
-                }
-                Catch {
-                    Write-Verbose 'Could not remove sessions to the Microsoft Security and Compliance Center.'
-                }
-            }
-            ElseIf (-not $testSession) {
-                Write-Verbose 'There are no active sessions to the Microsoft Security and Compliance Center.'
-            }
-        }
-        If ($ExchangeOnline) {
-            Write-Verbose 'Testing if there is a session active to Microsoft Exchange Online.'
-            $testSession = (Get-PSSession).where{ $_.ComputerName -like 'outlook.office365.com' } 
-            If ($testSession) {
-                Write-Verbose 'There are active sessions to the Microsoft Exchange Online services. Starting the removal of the active sessions.'
-                Try {
-                    $testSession | Remove-PSSession
-                    Write-Verbose 'Removed all sessions to the Microsoft Exchange Online services.'
-                }
-                Catch {
-                    Write-Verbose 'Could not remove sessions to the Microsoft Exchange Online services.'
-                }
-            }
-            ElseIf (-not $testSession) {
-                Write-Verbose 'There are no active sessions to the Microsoft Exchange Online services.'
-            }
-        }
-        If ($SharePointDevPNP) {
-            Write-Verbose 'Removing all sessions to Microsoft SharePoint Office Dev PNP.'
+            $Name = 'Security and Compliance Center'
+            $Module = 'ComplianceCenter'
             Try {
-                Disconnect-SPOnline
-                Write-Verbose 'Removed all sessions to Microsoft SharePoint Office Dev PNP.'
+                Get-PSSession -Name $Module -ErrorAction SilentlyContinue | Remove-PSSession
             }
             Catch {
-                Write-Verbose 'There were no connections to SharePoint Office Dev PNP, or the sessions could not be disconnected.'
+                Write-Verbose "Could not remove sessions to $Name."
+            }
+        } 
+        If ($ExchangeOnline) {
+            $Name = 'Exchange Online'
+            $Module = 'ExchangeOnline'
+            Try {
+                Get-PSSession -Name $Module -ErrorAction SilentlyContinue | Remove-PSSession
+            }
+            Catch {
+                Write-Verbose "Could not remove sessions to $Name."
+            }
+        } 
+        If ($SharePointDevPNP) {
+            $Name = 'SharePoint Office Dev PNP'
+            Try {
+                Disconnect-SPOnline
+            }
+            Catch {
+                Write-Verbose "Could not remove sessions to $Name."
             }
         }
         If ($SharePointOnline) {
-            Write-Verbose 'Removing all sessions to Microsoft Sharepoint Online.'
+            $Name = 'SharePoint Online'
+            $Module = 'Microsoft.Online.SharePoint.PowerShell'
             Try {
                 Disconnect-SPOService
-                Write-Verbose 'Removed all sessions to Microsoft Sharepoint Online.'
             }
             Catch {
-                Write-Verbose 'There were no connections to SharePoint Online, or the sessions could not be disconnected.'
+                Write-Verbose "Could not remove sessions to $Name."
             }
         }
-        if ($SkypeForBusinessOnline) {
-            Write-Verbose 'Testing if there is a session active to Microsoft Skype for Business Online.'
-            $testSession = (Get-PSSession).where{ $_.ComputerName -like "*.online.lync.com" }
-            If ($testSession) {
-                Write-Verbose 'There are active sessions to the Microsoft Skype for Business Online services. Starting the removal of the active sessions.'
-                Try {
-                    $testSession | Remove-PSSession
-                    Write-Verbose 'Removed all sessions to the Microsoft Skype for Business Online services.'
-                }
-                Catch {
-                    Write-Verbose 'Could not remove sessions to the Microsoft Skype for Business Online services.'
-                }
+        If ($SkypeForBusinessOnline) {
+            $Name = 'Skype for Business Online'
+            $Module = 'SkypeOnlineConnector'
+            Try {
+                Get-PSSession -Name $Module -ErrorAction SilentlyContinue | Remove-PSSession
             }
-            ElseIf (-not $testSession) {
-                Write-Verbose 'There are no active sessions to Microsoft Skype for Business Online.'
+            Catch {
+                Write-Verbose "Could not remove sessions to $Name."
             }
         }
     }
@@ -602,7 +465,7 @@ Function Install-Office365Prerequisites {
             https://download.microsoft.com/download/1/6/6/166A2668-2FA6-4C8C-BBC5-93409D47B339/WindowsAzureADRightsManagementAdministration_x64.exe
         }
         If ($OfficeDevPNPSharePointOnline) {
-            Install-Module -Name OfficeDevPnP.PowerShell.V16.Commands -Force -Confirm:$false
+            Install-Module -Name OfficeDevPnP.PowerShell.V16.Commands -Force -Confirm $false
         }
         If ($SharePointOnline) {
             https://download.microsoft.com/download/0/2/E/02E7E5BA-2190-44A8-B407-BC73CA0D6B87/sharepointonlinemanagementshell_5214-1200_x64_en-us.msi
