@@ -32,7 +32,7 @@
 		<Service>AzureRMS</Service>
 		<Name>Windows Azure AD Rights Management Administration</Name>
 		<Type>EXE</Type>
-		<ProductID>6EACEC8B-7174-4180-B8D6-528D7B2C09F0</ProductID>
+		<ProductID>{6EACEC8B-7174-4180-B8D6-528D7B2C09F0}</ProductID>
 		<URL>https://download.microsoft.com/download/1/6/6/166A2668-2FA6-4C8C-BBC5-93409D47B339/WindowsAzureADRightsManagementAdministration_x64.exe</URL>
 		<Argument>/Passive</Argument>
 	</Module>

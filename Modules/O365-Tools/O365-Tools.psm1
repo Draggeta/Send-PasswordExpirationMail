@@ -515,6 +515,7 @@ Function Install-O365Module {
         $XmlUri = 'https://raw.githubusercontent.com/draggeta/sysadmin-scripts/development/Modules/O365-Tools/O365-Tools.xml'
         $XmlName = [System.IO.Path]::GetFileName($XmlUri)
         $XmlPath = "$env:TEMP\$XmlName"
+        Remove-Item -Path $XmlPath -Confirm:$false -Force
         Start-BitsTransfer -Source $XmlUri -Destination $XmlPath
         $XMLConfig = Select-Xml -Path "$env:TEMP\$XmlName" -XPath '/'
     }
