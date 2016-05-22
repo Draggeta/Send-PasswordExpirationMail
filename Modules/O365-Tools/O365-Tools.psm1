@@ -485,7 +485,7 @@ Function Install-O365Module {
      
         Reinstalls all prerequisites required to connect to all Azure/Office 365 services. This command will first uninstall the software and modules and then reinstall them.
     .INPUTS 
-    	None. You cannot pipe objects to Disconnect-O365Session
+    	None. You cannot pipe objects to Install-O365Module.
     .OUTPUTS 
     	None.
     .NOTES 
@@ -526,7 +526,7 @@ Function Install-O365Module {
                 $InstallUri = $Config.URL
                 $InstallName = [System.IO.Path]::GetFileName($InstallUri)
                 $InstallPath = "$env:TEMP\$InstallName"
-                $InstallID = Get-ItemProperty "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\{$($Config.ProductID)}" -ErrorAction SilentlyContinue
+                $InstallID = Get-ItemProperty "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\$($Config.ProductID)" -ErrorAction SilentlyContinue
                 If ($Config.Type -eq 'MSI') {
                     If ($Force) {
                         Try {
@@ -559,7 +559,7 @@ Function Install-O365Module {
                         }
                     }
                     ElseIf ($InstallID) {
-                        Write-Verbose "$($Config.Name) is already installed."
+                        Write-Output "$($Config.Name) is already installed."
                     }
                 }
                 ElseIf ($Config.Type -eq 'EXE') {
@@ -594,7 +594,7 @@ Function Install-O365Module {
                         }
                     }
                     ElseIf ($InstallID) {
-                        Write-Information "$($Config.Name) is already installed."
+                        Write-Output "$($Config.Name) is already installed."
                     }
                 }
                 ElseIf ($Config.Type -eq 'MOD') {
@@ -621,7 +621,7 @@ Function Install-O365Module {
                         }
                     }
                     ElseIf ($InstalledModule.Version -ge $CurrentModule.Version) {
-                        Write-Information "Module $($Config.Name) is already installed."
+                        Write-Output "Module $($Config.Name) is already installed."
                     }
                 }
             }

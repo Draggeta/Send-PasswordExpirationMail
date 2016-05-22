@@ -18,7 +18,7 @@
 	</Module>
 	<Module>
 		<Service>Azure</Service>
-		<Name>Azure Module</Name>
+		<Name>Azure Classic Module</Name>
 		<Type>MOD</Type>
 		<ModuleName>Azure</ModuleName>
 	</Module>
@@ -37,7 +37,7 @@
 		<Argument>/Passive</Argument>
 	</Module>
 	<Module>
-		<Service>SharePointDevPNP</Service>
+		<Service>SharePointDevPnP</Service>
 		<Name>Office Developer Patterns and Practices PowerShell Cmdlets for SharePoint Online</Name>
 		<Type>MOD</Type>
 		<ModuleName>OfficeDevPnP.PowerShell.V16.Commands</ModuleName>
