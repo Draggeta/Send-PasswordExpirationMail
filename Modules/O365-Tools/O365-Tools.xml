@@ -1,7 +1,7 @@
 <Settings>
 	<Version>1.0.0.0</Version>
 	<Module>
-		<Service>MSOnline</Service>
+		<Service>AzureAD</Service>
 		<Name>Microsoft Online Sign-In Assistant for IT Professionals</Name>
 		<Type>MSI</Type>
 		<ProductID>{D8AB93B0-6FBF-44A0-971F-C0669B5AE6DD}</ProductID>
@@ -9,7 +9,7 @@
 		<Argument></Argument>
 	</Module>
 	<Module>
-		<Service>MSOnline</Service>
+		<Service>AzureAD</Service>
 		<Name>Windows Azure Active Directory-module voor Windows PowerShell</Name>
 		<Type>EXE</Type>
 		<ProductID>{43CC9C53-A217-4850-B5B2-8C347920E500}</ProductID>
