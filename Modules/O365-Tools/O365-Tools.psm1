@@ -525,39 +525,75 @@ Function Install-O365Module {
                 $InstallUri = $Config.URL
                 $InstallName = [System.IO.Path]::GetFileName($InstallUri)
                 $InstallPath = "$env:TEMP\$InstallName"
-                $InstallID = Get-ItemProperty "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\$($Config.ProductID)" -ErrorAction SilentlyContinue
+                $InstallID = Get-ItemProperty "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\{$($Config.ProductID)}" -ErrorAction SilentlyContinue
                 If ($Config.Type -eq 'MSI') {
                     If ($Force) {
-                        Start-Process -FilePath msiexec.exe -ArgumentList "/uninstall $($Config.ProductID) /passive /norestart" -Wait
-                    }
-                    If (-not $InstallID) {
                         Try {
+                            Write-Verbose "Uninstalling $($Config.Name)."
+                            Start-Process -FilePath msiexec.exe -ArgumentList "/uninstall $($Config.ProductID) /passive /norestart" -Wait
+                            Write-Verbose "Uninstalled $($Config.Name)."
+                        }
+                        Catch {
+                            Write-Warning "An error occured during the uninstallation of $($Config.Name)."
+                        }
+                    }
+                    If (-not $InstallID -or $Force) {
+                        Try {
+                            Write-Verbose "Downloading $($Config.Name)."
                             Start-BitsTransfer -Source $InstallUri -Destination $InstallPath
-                            $Certificate = Get-AuthenticodeSignature $InstallPath
-                            If ($Certificate.Status -eq 'Valid' -and $Certificate.SignerCertificate.DnsNameList.Unicode -contains 'Microsoft Corporation') {
-                                Start-Process -FilePath msiexec.exe -ArgumentList "/package $InstallPath /passive" -Wait
-                                Remove-Item -Path $InstallPath -Confirm:$false -Force
+                            If (Test-Path $InstallPath) {
+                                Write-Verbose "Downloaded $($Config.Name). Validating publisher certificate."
+                                $Certificate = Get-AuthenticodeSignature $InstallPath
+                                If ($Certificate.Status -eq 'Valid' -and $Certificate.SignerCertificate.DnsNameList.Unicode -contains 'Microsoft Corporation') {
+                                    Write-Verbose "Certificate validated. Installing $($Config.Name)."
+                                    Start-Process -FilePath msiexec.exe -ArgumentList "/package $InstallPath /passive" -Wait
+                                    Write-Verbose "Installed $($Config.Name). Removing installation file."
+                                    Remove-Item -Path $InstallPath -Confirm:$false -Force
+                                    Write-Verbose "Removed installation file."
+                                }
                             }
                         }
                         Catch {
+                            Write-Warning "An error occured during the installation of $($Config.Name)."
                         }
+                    }
+                    ElseIf ($InstallID) {
+                        Write-Verbose "$($Config.Name) is already installed."
                     }
                 }
                 ElseIf ($Config.Type -eq 'EXE') {
                     If ($Force) {
-                        Start-Process -FilePath msiexec.exe -ArgumentList "/uninstall $($Config.ProductID) /passive /norestart" -Wait
-                    }
-                    If (-not $InstallID) {
                         Try {
+                            Write-Verbose "Uninstalling $($Config.Name)."
+                            Start-Process -FilePath msiexec.exe -ArgumentList "/uninstall $($Config.ProductID) /passive /norestart" -Wait
+                            Write-Verbose "Uninstalled $($Config.Name)."
+                        }
+                        Catch {
+                            Write-Warning "An error occured during the uninstallation of $($Config.Name)."
+                        }
+                    }
+                    If (-not $InstallID -or $Force) {
+                        Try {
+                            Write-Verbose "Downloading $($Config.Name)."
                             Start-BitsTransfer -Source $InstallUri -Destination $InstallPath
-                            $Certificate = Get-AuthenticodeSignature $InstallPath
-                            If ($Certificate.Status -eq 'Valid' -and $Certificate.SignerCertificate.DnsNameList.Unicode -contains 'Microsoft Corporation') {
-                                Start-Process $InstallPath -ArgumentList $Config.Argument -Wait
-                                Remove-Item -Path $InstallPath -Confirm:$false -Force
+                            If (Test-Path $InstallPath) {
+                                Write-Verbose "Downloaded $($Config.Name). Validating publisher certificate."
+                                $Certificate = Get-AuthenticodeSignature $InstallPath
+                                If ($Certificate.Status -eq 'Valid' -and $Certificate.SignerCertificate.DnsNameList.Unicode -contains 'Microsoft Corporation') {
+                                    Write-Verbose "Certificate validated. Installing $($Config.Name)."
+                                    Start-Process $InstallPath -ArgumentList $Config.Argument -Wait
+                                    Write-Verbose "Installed $($Config.Name). Removing installation file."
+                                    Remove-Item -Path $InstallPath -Confirm:$false -Force
+                                    Write-Verbose "Removed installation file."
+                                }
                             }
                         }
                         Catch {
+                            Write-Warning "An error occured during the installation of $($Config.Name)"
                         }
+                    }
+                    ElseIf ($InstallID) {
+                        Write-Information "$($Config.Name) is already installed."
                     }
                 }
                 ElseIf ($Config.Type -eq 'MOD') {
@@ -565,17 +601,26 @@ Function Install-O365Module {
                     $CurrentModule = Find-Module -Name $Config.ModuleName
                     If ($Force) {
                         Try {
+                            Write-Verbose "Uninstalling module $($Config.Name)."
                             Uninstall-Module -Name $Config.ModuleName -AllVersions
+                            Write-Verbose "Uninstalled module $($Config.Name)."
                         }
                         Catch {
+                            Write-Warning "Could not uninstall module $($Config.Name)."
                         }
                     }
                     If ($InstalledModule.Version -lt $CurrentModule.Version) {
                         Try {
+                            Write-Verbose "Installing module $($Config.Name)."
                             Install-Module $Config.ModuleName
+                            Write-Verbose "Installed module $($Config.Name)."
                         }
                         Catch {
+                            Write-Warning "Could not install module $($Config.Name)."
                         }
+                    }
+                    ElseIf ($InstalledModule.Version -ge $CurrentModule.Version) {
+                        Write-Information "Module $($Config.Name) is already installed."
                     }
                 }
             }
