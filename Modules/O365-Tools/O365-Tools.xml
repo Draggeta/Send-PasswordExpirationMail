@@ -1,0 +1,61 @@
+<Settings>
+	<Version>1.0.0.0</Version>
+	<Module>
+		<Service>MSOnline</Service>
+		<Name>Microsoft Online Sign-In Assistant for IT Professionals</Name>
+		<Type>MSI</Type>
+		<ProductID>{D8AB93B0-6FBF-44A0-971F-C0669B5AE6DD}</ProductID>
+		<URL>https://download.microsoft.com/download/5/0/1/5017D39B-8E29-48C8-91A8-8D0E4968E6D4/en/msoidcli_64.msi</URL>
+		<Argument></Argument>
+	</Module>
+	<Module>
+		<Service>MSOnline</Service>
+		<Name>Windows Azure Active Directory-module voor Windows PowerShell</Name>
+		<Type>EXE</Type>
+		<ProductID>{43CC9C53-A217-4850-B5B2-8C347920E500}</ProductID>
+		<URL>https://bposast.vo.msecnd.net/MSOPMW/Current/amd64/AdministrationConfig-en.msi</URL>
+		<Argument>/Passive</Argument>
+	</Module>
+	<Module>
+		<Service>Azure</Service>
+		<Name>Azure Module</Name>
+		<Type>MOD</Type>
+		<ModuleName>Azure</ModuleName>
+	</Module>
+	<Module>
+		<Service>AzureRM</Service>
+		<Name>Azure Resource Model Module</Name>
+		<Type>MOD</Type>
+		<ModuleName>AzureRM</ModuleName>
+	</Module>
+	<Module>
+		<Service>AzureRMS</Service>
+		<Name>Windows Azure AD Rights Management Administration</Name>
+		<Type>EXE</Type>
+		<ProductID>{6EACEC8B-7174-4180-B8D6-528D7B2C09F0}</ProductID>
+		<URL>https://download.microsoft.com/download/1/6/6/166A2668-2FA6-4C8C-BBC5-93409D47B339/WindowsAzureADRightsManagementAdministration_x64.exe</URL>
+		<Argument>/Passive</Argument>
+	</Module>
+	<Module>
+		<Service>SharePointDevPNP</Service>
+		<Name>Office Developer Patterns and Practices PowerShell Cmdlets for SharePoint Online</Name>
+		<Type>MOD</Type>
+		<ModuleName>OfficeDevPnP.PowerShell.V16.Commands</ModuleName>
+	</Module>
+	<Module>
+		<Service>SharePointOnline</Service>
+		<Name>SharePoint Online Management Shell</Name>
+		<Type>MSI</Type>
+		<ProductID>{95160000-115B-0409-1000-0000000FF1CE}</ProductID>
+		<URL>https://download.microsoft.com/download/0/2/E/02E7E5BA-2190-44A8-B407-BC73CA0D6B87/sharepointonlinemanagementshell_5214-1200_x64_en-us.msi</URL>
+		<Argument></Argument>
+	</Module>
+	<Module>
+		<Service>SkypeForBusinessOnline</Service>
+		<Name>Skype for Business Online, Windows PowerShell Module</Name>
+		<Type>EXE</Type>
+		<ProductID>{D7334D5D-0FA2-4DA9-8D8A-883F8C0BD41B}</ProductID>
+		<URL>https://download.microsoft.com/download/2/0/5/2050B39B-4DA5-48E0-B768-583533B42C3B/SkypeOnlinePowershell.exe</URL>
+		<Argument>/Passive</Argument>
+	</Module>
+</Settings>

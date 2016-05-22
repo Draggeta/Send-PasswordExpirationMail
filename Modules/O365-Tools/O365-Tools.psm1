@@ -62,7 +62,7 @@
         [Switch]$ExchangeOnline,
         
         [Parameter(Mandatory = $false, ParameterSetName = 'SkypeSharePoint')]
-        [Switch]$SharePointDevPNP,
+        [Switch]$SharePointDevPnP,
 
         [Parameter(Mandatory = $false, ParameterSetName = 'SkypeSharePoint')]
         [Switch]$SharePointOnline,
@@ -300,7 +300,7 @@ Function Disconnect-Office365Session {
         [Switch]$ExchangeOnline,
 
         [Parameter(ParameterSetName = 'Specific')]
-        [Switch]$SharePointDevPNP,
+        [Switch]$SharePointDevPnP,
 
         [Parameter(ParameterSetName = 'Specific')]
         [Switch]$SharePointOnline,
@@ -399,79 +399,87 @@ Function Disconnect-Office365Session {
     }
 }
 
-Function Install-Office365Prerequisites {
+Function Install-Office365Prerequisite {
     [CmdletBinding()]
     Param (
-        [Parameter(ParameterSetName = 'Specific')]
-        [Switch]$MSOnline,
-
-        [Parameter(ParameterSetName = 'Specific')]
-        [Switch]$Azure,
-
-        [Parameter(ParameterSetName = 'Specific')]
-        [Switch]$AzureRM,
-
-        [Parameter(ParameterSetName = 'Specific')]
-        [Switch]$AzureRMS,
-
-        [Parameter(ParameterSetName = 'Specific')]
-        [Switch]$OfficeDevPNPSharePointOnline,
-
-        [Parameter(ParameterSetName = 'Specific')]
-        [Switch]$SharePointOnline,
-
-        [Parameter(ParameterSetName = 'Specific')]
-        [Switch]$SkypeForBusinessOnline,
+        [Parameter(Mandatory = $true, ParameterSetName = 'Specific')]
+        [ValidateSet('MSOnline','Azure','AzureRM','AzureRMS','SharePointDevPnP','SharePointOnline','SkypeForBusinessOnline')]
+        [String[]]$ServiceName,
 
         [Parameter(Mandatory = $true, ParameterSetName = 'All')]
         [Switch]$All,
-
-        [Parameter()]
-        [Switch]$Update,
         
         [Parameter()]
         [Switch]$Force
     )
     BEGIN {
-        Switch ($All) {
-            $True { 
-                $MSOnline = $true
-                $Azure = $true
-                $AzureRM = $true
-                $AzureRMS = $true
-                $OfficeDevPNPSharePointOnline = $true
-                $SharePointOnline = $true
-                $SkypeForBusinessOnline = $true
-            }
+        If ($All) {
+            $ServiceName = 'MSOnline','Azure','AzureRM','AzureRMS','SharePointDevPnP','SharePointOnline','SkypeForBusinessOnline'
         }
         $Modules = Get-Module -ListAvailable
+        [Xml]$ConfigXml = Get-Content 'C:\GitRepositories\sysadmin-scripts\Modules\O365-Tools\O365-ToolsConfig.xml'
     }
     PROCESS {
-        If ($MSOnline) {
-            $MSOnlineAssistantUri = 'https://download.microsoft.com/download/5/0/1/5017D39B-8E29-48C8-91A8-8D0E4968E6D4/en/msoidcli_64.msi'
-            $MSOnlineAssistantFile = $MSOnlineAssistantUri.Split("/")[-1]
-            $MSOnlineModuleUri = 'https://bposast.vo.msecnd.net/MSOPMW/Current/amd64/AdministrationConfig-en.msi'
-            $MSOnlineModuleFile = $MSOnline
-
-            Start-BitsTransfer -Source $MSOnlineAssistantUri,$MSOnlineModuleUri -Destination $env:TEMP,$env:TEMP
-        }
-        If ($Azure) {
-            Install-Module Azure
-        }
-        If ($AzureRM) {
-            Install-Module AzureRM
-        }
-        If ($AzureRMS) {
-            https://download.microsoft.com/download/1/6/6/166A2668-2FA6-4C8C-BBC5-93409D47B339/WindowsAzureADRightsManagementAdministration_x64.exe
-        }
-        If ($OfficeDevPNPSharePointOnline) {
-            Install-Module -Name OfficeDevPnP.PowerShell.V16.Commands -Force -Confirm $false
-        }
-        If ($SharePointOnline) {
-            https://download.microsoft.com/download/0/2/E/02E7E5BA-2190-44A8-B407-BC73CA0D6B87/sharepointonlinemanagementshell_5214-1200_x64_en-us.msi
-        }
-        If ($SkypeForBusinessOnline) {
-            https://download.microsoft.com/download/2/0/5/2050B39B-4DA5-48E0-B768-583533B42C3B/SkypeOnlinePowershell.exe
+        ForEach ($Service in $ServiceName) {            
+            $ConfigData = $ConfigXml.Settings.Module | Where Service -eq $Service
+            ForEach ($Config in $ConfigData) {
+                $DownloadUri = $Config.URL
+                $Installer = [System.IO.Path]::GetFileName($DownloadUri)
+                $InstallerPath = "$env:TEMP\$Installer"
+                $InstallerID = Get-ItemProperty "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\$($Config.ProductID)"
+                If ($Config.Type -eq 'MSI') {
+                    If ($Force) {
+                        Start-Process -FilePath msiexec.exe -ArgumentList "/uninstall $($Config.ProductID) /passive /norestart" -Wait
+                    }
+                    If (-not $InstallerID) {
+                        Try {
+                            Start-BitsTransfer -Source $DownloadUri -Destination $InstallerPath
+                            $Cert = Get-AuthenticodeSignature $InstallerPath
+                            If ($Cert.Status -eq 'Valid' -and $Cert.SignerCertificate.DnsNameList.unicode -contains 'Microsoft Corporation') {
+                                Start-Process -FilePath msiexec.exe -ArgumentList "/package $InstallerPath /passive" -Wait
+                                Remove-Item -Path $InstallerPath -Confirm:$false -Force
+                            }
+                        }
+                        Catch {
+                        }
+                    }
+                }
+                ElseIf ($Config.Type -eq 'EXE') {
+                    If ($Force) {
+                        Start-Process -FilePath msiexec.exe -ArgumentList "/uninstall $($Config.ProductID) /passive /norestart" -Wait
+                    }
+                    If (-not $InstallerID) {
+                        Try {
+                            Start-BitsTransfer -Source $DownloadUri -Destination $InstallerPath
+                            $Cert = Get-AuthenticodeSignature $InstallerPath
+                            If ($cert.Status -eq 'Valid' -and $Cert.SignerCertificate.DnsNameList.unicode -contains 'Microsoft Corporation') {
+                                Start-Process $InstallerPath -ArgumentList $Config.Argument -Wait
+                                Remove-Item -Path $InstallerPath -Confirm:$false -Force
+                            }
+                        }
+                        Catch {
+                        }
+                    }
+                }
+                ElseIf ($Config.Type -eq 'MOD') {
+                    $InstalledModule = Get-Module -Name $Config.ModuleName -ListAvailable
+                    $CurrentModule = Find-Module -Name $Config.ModuleName
+                    If ($Force) {
+                        Try {
+                            Uninstall-Module -Name $Config.ModuleName -AllVersions
+                        }
+                        Catch {
+                        }
+                    }
+                    If ($InstalledModule.Version -lt $CurrentModule.Version) {
+                        Try {
+                            Install-Module $Config.ModuleName
+                        }
+                        Catch {
+                        }
+                    }
+                }
+            }
         }
     }
     END {
