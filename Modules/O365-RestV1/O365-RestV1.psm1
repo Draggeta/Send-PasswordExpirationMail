@@ -71,7 +71,7 @@
     #>
     [CmdletBinding()]
     Param(
-        [Parameter()]
+        [Parameter(Mandatory = $True)]
         [String]$Subject,
         
         [Parameter()]
@@ -86,14 +86,14 @@
         [Parameter()]
         $Location,
 
-        [Parameter(Mandatory = $True)]
+        [Parameter()]
         [DateTime]$StartDate = (Get-Date),
         
         [Parameter()]
         [ValidateScript({ [System.TimeZoneInfo]::FindSystemTimeZoneById($_) })]
         [String]$StartTimeZone = [System.Timezone]::CurrentTimeZone.StandardName,
         
-        [Parameter(Mandatory = $True)]
+        [Parameter()]
         [DateTime]$EndDate = (Get-Date).AddMinutes(30),
         
         [Parameter()]
@@ -105,7 +105,7 @@
         
         [Parameter()]
         [ValidateSet('Free','WorkingElsewhere','Tentative','Busy','Away')]
-        [String]$ShowAs,
+        [String]$ShowAs = 'Busy',
         
         [Parameter()]
         [MailAddress]$UserPrincipalName,
@@ -129,30 +129,19 @@
     }
     PROCESS {
         $StartTimeZoneObject = [System.TimeZoneInfo]::FindSystemTimeZoneById($StartTimeZone)
-        $StartDateTimeZone = [System.TimeZoneInfo]::ConvertTimeFromUtc((Get-Date -Date $StartDate).ToUniversalTime(), $StartTimeZoneObject)
-        Switch ($StartDateTimeZone.IsDaylightSavingTime()) {
-            $True { $StartDSTOffset = 1 }
-            $False { $StartDSTOffset = 0 }
+        $StartUTCOffsetObject = $StartTimeZoneObject.GetUtcOffset($StartDate)
+        $StartUTCOffsetString = "{0:hh}:{0:mm}" -f ($StartUTCOffsetObject)
+        Switch ($StartUTCOffsetObject.TotalMinutes) {
+            {$_ -lt 0} { $StartFormat = "yyyy-MM-ddTHH:mm:ss.fffffff-$StartUTCOffsetString" }
+            {$_ -ge 0} { $StartFormat = "yyyy-MM-ddTHH:mm:ss.fffffff+$StartUTCOffsetString" }
         }
-        $StartCurrentHourOffset = ($StartTimeZoneObject.BaseUtcOffset.Hours + $StartDSTOffset).ToString("00")
-        $StartCurrentMinuteOffset = [Math]::Abs($StartTimeZoneObject.BaseUtcOffset.Minutes).ToString("00")
-        Switch ($StartCurrentHourOffset) {
-            { $_ -lt 0} { $StartTimeZoneOffset = "$($StartCurrentHourOffset):$($StartCurrentMinuteOffset)" }
-            { $_ -ge 0} { $StartTimeZoneOffset = "+$($StartCurrentHourOffset):$($StartCurrentMinuteOffset)" }
-        }
-        $StartFormat = "yyyy-MM-ddTHH:mm:ss.fffffff$StartTimeZoneOffset"
         $EndTimeZoneObject = [System.TimeZoneInfo]::FindSystemTimeZoneById($EndTimeZone)
-        Switch ($EndDate.IsDaylightSavingTime()) {
-            $True { $EndDSTOffset = 1 }
-            $False { $EndDSTOffset = 0 }
+        $EndUTCOffsetObject = $EndTimeZoneObject.GetUtcOffset($EndDate)
+        $EndUTCOffsetString = "{0:hh}:{0:mm}" -f ($EndUTCOffsetObject)
+        Switch ($EndUTCOffsetObject.TotalMinutes) {
+            {$_ -lt 0} { $EndFormat = "yyyy-MM-ddTHH:mm:ss.fffffff-$EndUTCOffsetString" }
+            {$_ -ge 0} { $EndFormat = "yyyy-MM-ddTHH:mm:ss.fffffff+$EndUTCOffsetString" }
         }
-        $EndCurrentHourOffset = ($EndTimeZoneObject.BaseUtcOffset.Hours + $EndDSTOffset).ToString("00")
-        $EndCurrentMinuteOffset = [Math]::Abs($EndTimeZoneObject.BaseUtcOffset.Minutes).ToString("00")
-        Switch ($EndCurrentHourOffset) {
-            { $_ -lt 0} { $EndTimeZoneOffset = "$($EndCurrentHourOffset):$($EndCurrentMinuteOffset)" }
-            { $_ -ge 0} { $EndTimeZoneOffset = "+$($EndCurrentHourOffset):$($EndCurrentMinuteOffset)" }
-        }
-        $EndFormat = "yyyy-MM-ddTHH:mm:ss.fffffff$EndTimeZoneOffset"
         Switch ($AsHTML) {
             $False { $NoteContentType = 'Text' }
             $True { $NoteContentType = 'HTML' }
@@ -205,7 +194,6 @@
             ShowAs = $ShowAs
             IsAllDay = $AllDay.IsPresent
         }
-
         Invoke-RestMethod -Uri $Uri -Credential $Credential -Method Post -ContentType $ContentType -Headers $Headers -Body (ConvertTo-Json $Body -Depth 10)
     }
     END {
