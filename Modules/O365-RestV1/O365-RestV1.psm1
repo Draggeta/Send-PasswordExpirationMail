@@ -132,15 +132,15 @@
         $StartUTCOffsetObject = $StartTimeZoneObject.GetUtcOffset($StartDate)
         $StartUTCOffsetString = "{0:hh}:{0:mm}" -f ($StartUTCOffsetObject)
         Switch ($StartUTCOffsetObject.TotalMinutes) {
-            {$_ -lt 0} { $StartFormat = "yyyy-MM-ddTHH:mm:ss.fffffff-$StartUTCOffsetString" }
-            {$_ -ge 0} { $StartFormat = "yyyy-MM-ddTHH:mm:ss.fffffff+$StartUTCOffsetString" }
+            { $_ -lt 0 } { $StartFormat = "yyyy-MM-ddTHH:mm:ss.fffffff-$StartUTCOffsetString" }
+            { $_ -ge 0 } { $StartFormat = "yyyy-MM-ddTHH:mm:ss.fffffff+$StartUTCOffsetString" }
         }
         $EndTimeZoneObject = [System.TimeZoneInfo]::FindSystemTimeZoneById($EndTimeZone)
         $EndUTCOffsetObject = $EndTimeZoneObject.GetUtcOffset($EndDate)
         $EndUTCOffsetString = "{0:hh}:{0:mm}" -f ($EndUTCOffsetObject)
         Switch ($EndUTCOffsetObject.TotalMinutes) {
-            {$_ -lt 0} { $EndFormat = "yyyy-MM-ddTHH:mm:ss.fffffff-$EndUTCOffsetString" }
-            {$_ -ge 0} { $EndFormat = "yyyy-MM-ddTHH:mm:ss.fffffff+$EndUTCOffsetString" }
+            { $_ -lt 0 } { $EndFormat = "yyyy-MM-ddTHH:mm:ss.fffffff-$EndUTCOffsetString" }
+            { $_ -ge 0 } { $EndFormat = "yyyy-MM-ddTHH:mm:ss.fffffff+$EndUTCOffsetString" }
         }
         Switch ($AsHTML) {
             $False { $NoteContentType = 'Text' }
