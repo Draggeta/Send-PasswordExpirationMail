@@ -194,6 +194,7 @@
             ShowAs = $ShowAs
             IsAllDay = $AllDay.IsPresent
         }
+        Write-Verbose (ConvertTo-Json $Body)
         Invoke-RestMethod -Uri $Uri -Credential $Credential -Method Post -ContentType $ContentType -Headers $Headers -Body (ConvertTo-Json $Body -Depth 10)
     }
     END {
