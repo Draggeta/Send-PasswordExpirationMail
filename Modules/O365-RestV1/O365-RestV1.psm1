@@ -29,6 +29,8 @@
             Specify the end date and time of the event or meeting. This can be specified with the Get-Date cmdlet, but also typed naturally such as '2016-05-24 14:15:00'.
         .PARAMETER EndTimeZone
             Specifies the time zone of the EndDate parameter. By default this will use the computer's current timezone. A list of available time zones can be found by using the .NET command '[System.TimeZoneInfo]::GetSystemTimeZones()'.
+        .PARAMETER Reminder
+            Specifies when a reminder should be displayed. This value is an integer and specifies the amount of minutes.
         .PARAMETER AllDay
             Specifies if a meeting or event will take place all day. If specified, normally the time of the start and end date need to be '00:00:00', otherwise the command fails. However, this script accounts for that and sets the time to '00:00:00' if this switch has been specified.
         .PARAMETER ShowAs
@@ -100,6 +102,9 @@
         [ValidateScript({ [System.TimeZoneInfo]::FindSystemTimeZoneById($_) })]
         [String]$EndTimeZone = [System.Timezone]::CurrentTimeZone.StandardName,
         
+        [Parameter()]
+        [Int]$Reminder,
+
         [Parameter()]
         [Switch]$AllDay,
         
@@ -183,6 +188,7 @@
             StartTimeZone = $StartTimeZone
             End = $End
             EndTimeZone = $EndTimeZone
+            Reminder = $Reminder
             Attendees = @(
                 $AttendeesProperties
             )
