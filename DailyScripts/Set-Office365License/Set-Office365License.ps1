@@ -1,120 +1,64 @@
-﻿Import-Module C:\Scripts\SupportScripts\CredentialManager\CredentialManager.psd1
-Import-Module C:\Scripts\SupportScripts\Office365CustomTools
+﻿#Import the necessary modules for this script.
+Import-Module C:\Scripts\SupportScripts\CredentialManager\CredentialManager.psd1
+Import-Module O365-Tools
 Import-Module ActiveDirectory
-
+#Load the configuration file, credentials and the file containing the license data for use in the script.
 [xml]$configFile = Get-Content -Path C:\Scripts\ConfigFile.xml
 $o365Credentials = Get-StoredCredential -Target $configFile.Settings.Credentials.Office365Credentials
-
-Login-Office365 -Credential $o365Credentials -MsOnline
-
-#region Specify Licenses
-
-    $Licenses = @{ 
-        
-        'tenantname:STANDARDWOFFPACK_FACULTY' = @{
-        
-            'sg_o365_disabled-education_license' = @{
-
-                DisabledPlans = 'PROJECTWORKMANAGEMENT','SWAY','INTUNE_O365','YAMMER_EDU','SHAREPOINTWAC_EDU','MCOSTANDARD','SHAREPOINTSTANDARD_EDU'
-                UsageLocation = 'NL'
-
-            }
-            'sg_o365_service-education_license' = @{
-
-                DisabledPlans = 'PROJECTWORKMANAGEMENT','SWAY','INTUNE_O365','YAMMER_EDU','SHAREPOINTWAC_EDU','MCOSTANDARD','SHAREPOINTSTANDARD_EDU'
-                UsageLocation = 'NL'
-
-            }
-            'sg_o365_staff-education_license' = @{
-
-                DisabledPlans = ''
-                UsageLocation = 'NL'
-
-            }
-        
-        }
-        'tenantname:ENTERPRISEPACK_FACULTY' = @{
-        
-            'sg_o365_staff-education-e3_license' = @{
-
-                DisabledPlans = 'RMS_S_ENTERPRISE'
-                UsageLocation = 'NL'
-
-            }
-        
-        }
-        'tenantname:STANDARDWOFFPACK_STUDENT' = @{
-        
-            'sg_o365_student-education_license' = @{
-
-                DisabledPlans = 'PROJECTWORKMANAGEMENT','INTUNE_O365','YAMMER_EDU','SHAREPOINTWAC_EDU','SHAREPOINTSTANDARD_EDU'
-                UsageLocation = 'NL'
-
-            }
-
-        }
-        'tenantname:OFFICESUBSCRIPTION_STUDENT' = @{
-
-            'sg_o365_student-proplus_license' = @{
-
-                DisabledPlans = 'INTUNE_O365'
-                UsageLocation = 'NL'
-
-            }
-
-        }
-        
-    }
-
-#endregion
+$Licenses = $configFile.Setings.ScriptSettings.SetOffice365License.LicenseData
+#login to Office 365. May need to be changed.
+Try {
+    Connect-O365Session -Credential $o365Credentials -AzureAD
+} Catch {
+    Write-Warning "Could not connect to Azure AD/MS Online. Script will abort."
+    Break
+}
 
 #region Licenses and Unlicense Users
 
-    foreach ($AccountSkuID in $Licenses.Keys) {
-        
-        $UsageLocation = 'NL'
+    ForEach ($AccountSkuID in $Licenses.Keys) {
+        #Set a few base variables for each sku set in the license file.
+        $UsageLocation = $Licenses.$AccountSkuID.Values.UsageLocation
         $Groups = $Licenses.$AccountSkuID.Keys
+        #Make an array of all users currently licensed with this SKU. This is handy for when you have multiple options per SKU.
         $CurrentlyLicensedUsers = ((Get-MsolUser -All).Where{ $_.Licenses.AccountSkuID -Contains $AccountSkuID }).UserPrincipalName
+        #Create an empty array to store all users that should be licensed.
         $ReferenceLicensedUsers = @()
 
-        foreach ($Group in $Groups) {
-
+        ForEach ($Group in $Groups) {
+            #Retrieve the disabled plans. Then create license objects for use with the Set-MsolUserLicense cmdlet later on in this script.
             $DisabledPlans = $Licenses.$AccountSkuID.$Group.DisabledPlans
-                        
-            $LicensedADUsers = (Get-ADGroupMember -Identity $Group -Recursive | Get-ADUser).UserPrincipalName
             $LicenseOptions = New-MsolLicenseOptions -AccountSkuId $AccountSkuID -DisabledPlans $DisabledPlans
+            #Get all users who should have a license. Add their userprincipalnames to the ReferenceLicensedUsers array.
+            $LicensedADUsers = (Get-ADGroupMember -Identity $Group -Recursive | Get-ADUser).UserPrincipalName
+            $ReferenceLicensedUsers += $LicensedADUsers
             
-            foreach ($ADUser in $LicensedADUsers) {
-                
+            ForEach ($ADUser in $LicensedADUsers) {
+                #Set a few base variables for each of the users found in the group.
                 $MsolUser = Get-MsolUser -UserPrincipalName $ADUser
                 $CurrentUsageLocation = $MsolUser.UsageLocation
                 $CurrentUserLicenses = $MsolUser.Licenses.AccountSkuId
                 
+                #Set the usage location to the correct value if incorrect.
                 If ($CurrentUsageLocation -ne $UsageLocation) {
                     Set-MsolUser -UserPrincipalName $MsolUser.UserPrincipalName -UsageLocation $UsageLocation -Verbose
                 }
+                #Set the license options to the correct value if this license is already assigned.
                 If ($CurrentUserLicenses -contains $AccountSkuID){
                     Set-MsolUserLicense -UserPrincipalName $MsolUser.UserPrincipalName -LicenseOptions $LicenseOptions -Verbose
                 }
+                #Set the license and license options if the SKU hasn't been assigned yet.
                 If ($CurrentUserLicenses -notcontains $AccountSkuID) {
                     Set-MsolUserLicense -UserPrincipalName $MsolUser.UserPrincipalName -AddLicenses $AccountSkuID -LicenseOptions $LicenseOptions -Verbose
                 }
-
             }
-
-            $ReferenceLicensedUsers += $LicensedADUsers
-
         }
-        foreach ($CurrentlyLicensedUser in $CurrentlyLicensedUsers) {
-            
+        #Test if a user who is currently licensed is in the list of users who should be licensed. If not, remove this SKU.
+        ForEach ($CurrentlyLicensedUser in $CurrentlyLicensedUsers) {
             If ($CurrentlyLicensedUser -notin $ReferenceLicensedUsers) {
-                
                 Set-MsolUserLicense -UserPrincipalName $CurrentlyLicensedUser -RemoveLicenses $AccountSkuID
-
             }
-        
         }
-
     }
 
 #endregion
