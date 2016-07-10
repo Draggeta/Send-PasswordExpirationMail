@@ -510,7 +510,15 @@ Function Install-O365Module {
     )
     BEGIN {
         If ($All) {
-            $Name = 'AzureAD','Azure','AzureRM','AzureRMS','SharePointDevPnP','SharePointOnline','SkypeForBusinessOnline'
+            $Name = @(
+                'AzureAD'
+                'Azure'
+                'AzureRM'
+                'AzureRMS'
+                'SharePointDevPnP'
+                'SharePointOnline'
+                'SkypeForBusinessOnline'
+            )
         }
         $XmlUri = 'https://raw.githubusercontent.com/draggeta/sysadmin-scripts/development/Modules/O365-Tools/O365-Tools.xml'
         $XmlName = [System.IO.Path]::GetFileName($XmlUri)

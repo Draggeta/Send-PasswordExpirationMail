@@ -14,13 +14,17 @@ Function Get-PEUser {
         $Filter = '*',
 
         [Parameter(ParameterSetName = 'Filter')]
-        $SearchBase = (Get-ADDomain).DistinguishedName
+        $SearchBase = (Get-ADDomain).DistinguishedName,
+
+        [Parameter(ParameterSetName = 'Filter')]
+        [ValidateSet('Subtree','OneLevel','Base')]
+        $SearchScope = 'Subtree'
     )
     BEGIN {
         If ($Identity) {
             $ADUsers = Get-ADUser -Identity $Identity
         } Else {
-            $ADUsers = Get-ADUser -Filter $Filter -SearchBase $SearchBase -SearchScope Subtree -Properties PasswordNeverExpires,PasswordLastSet,EmailAddress -ErrorVariable +EventLogErrors
+            $ADUsers = Get-ADUser -Filter $Filter -SearchBase $SearchBase -SearchScope $SearchScope -Properties PasswordNeverExpires,PasswordLastSet,EmailAddress -ErrorVariable +EventLogErrors
         }
         $ADPasswordPolicy = Get-ADDefaultDomainPasswordPolicy
         $Today = Get-Date 
