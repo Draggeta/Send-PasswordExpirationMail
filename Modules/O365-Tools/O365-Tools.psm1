@@ -110,7 +110,7 @@
     PROCESS {
         If ($AzureAD) {
             $Name = 'Azure Active Directory'
-            $Module = 'MSOnline'
+            $Module = 'AzureADPreview'
             If (-not (Get-Module -Name $Module -ListAvailable)) {
                 Write-Warning "The $Name module is not installed. Please install the module with the Install-O365Module cmdlet."
             }
@@ -195,7 +195,7 @@
                 Try {
                     Write-Verbose "Connecting to $Name."
                     $CcSession = New-PSSession -ConfigurationName Microsoft.Exchange -ConnectionUri $ConnectionUri -Name $Module -Credential $Credential -Authentication Basic -AllowRedirection
-                    Import-PSSession $CcSession -DisableNameChecking -Prefix CC
+                    Import-module (Import-PSSession $CcSession -DisableNameChecking -Prefix CC -AllowClobber) -Global
                     Write-Verbose "Successfully connected to $Name."
                 }
                 Catch {
@@ -214,7 +214,7 @@
                 Try {
                     Write-Verbose "Connecting to $Name."
                     $EoSession = New-PSSession -ConfigurationName Microsoft.Exchange -ConnectionUri $ConnectionUri -Name $Module -Credential $Credential -Authentication Basic -AllowRedirection
-                    Import-PSSession $EoSession -DisableNameChecking
+                    Import-Module (Import-PSSession -Session $EoSession -DisableNameChecking -AllowClobber) -Global
                     Write-Verbose "Successfully connected to $Name."
                 }
                 Catch {
@@ -223,8 +223,8 @@
             }
         }
         If ($SharePointDevPNP) {
-            $Name = 'SharePoint Office Dev PNP'
-            $Module = 'OfficeDevPnP.PowerShell.V16.Commands'
+            $Name = 'SharePointPnPPowerShellOnline'
+            $Module = 'SharePointPnPPowerShellOnline'
             If (-not (Get-Module -Name $Module -ListAvailable)) {
                 Write-Warning "The $Name module is not installed. Please install the module with the Install-O365Module cmdlet."
             }
@@ -419,7 +419,7 @@ Function Disconnect-O365Session {
             }
         } 
         If ($SharePointDevPNP) {
-            $Name = 'SharePoint Office Dev PNP'
+            $Name = 'SharePointPnPPowerShellOnline'
             Try {
                 Write-Verbose "Disconnecting from $Name."
                 Disconnect-SPOnline
@@ -499,7 +499,7 @@ Function Install-O365Module {
     [CmdletBinding()]
     Param (
         [Parameter(Mandatory = $true, ParameterSetName = 'Specific')]
-        [ValidateSet('AzureAD','Azure','AzureRM','AzureRMS','SharePointDevPnP','SharePointOnline','SkypeForBusinessOnline')]
+        [ValidateSet('AzureAD','Azure','AzureRM','AzureRMS','SharePointPnPPowerShellOnline','SharePointOnline','SkypeForBusinessOnline')]
         [String[]]$Name,
 
         [Parameter(Mandatory = $true, ParameterSetName = 'All')]
@@ -515,7 +515,7 @@ Function Install-O365Module {
                 'Azure'
                 'AzureRM'
                 'AzureRMS'
-                'SharePointDevPnP'
+                'SharePointPnPPowerShellOnline'
                 'SharePointOnline'
                 'SkypeForBusinessOnline'
             )
