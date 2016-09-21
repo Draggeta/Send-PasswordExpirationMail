@@ -12,13 +12,6 @@
             Specifies if the Note parameter text is formatted as HTML or not. Defaults to false. 
         .PARAMETER Attendees
             Specifies the attendees for this meeting. While the objects containing the attendees can be created manually, it is easier to use the New-O365RestAttendee to create them. The cmdlet can be used as follows:
-            
-            $Attendees = New-O365RestAttendee -EmailAddress Mark@domain.com,Sally@contoso.com -Type Required
-            $Attendees += New-O365RestAttendee -EmailAddress MeetingRoom1@domain.com -Type Resource
-
-            The following shows how to set the Attendees parameter to these attendees.
-
-            -Attendees $Attendees
         .PARAMETER Location
             Specifies the display name of the location the meeting is planned. If the meeting is planned in a room resource, the display name of the room can be specified here. However, this will only fill in the location field while not booking the room. To book a room, add the it as an attendee of the type 'Resource'.
         .PARAMETER StartDate
@@ -60,6 +53,17 @@
             -----------
         
             This command creates a meeting in the logged in user's default calendar with the specified subject and notes, while showing the user as free.
+        .EXAMPLE
+            $Attendees = New-O365RestAttendee -EmailAddress Mark@domain.com,Sally@contoso.com -Type Required
+
+            The following shows how to set the Attendees parameter to these attendees.
+
+            New-O365RestCalendarItem -Subject 'Testing the API.' -Note 'Testing the API is a great success!' -Attendees $Attendees -StartDate (Get-Date)  -Credential $Credential -AllDay 
+            Description
+            
+            -----------
+        
+            This command creates a meeting in the logged in user's default calendar with the specified subject and notes, and the specified attendees.
         .INPUTS
         	None. You cannot pipe objects to New-O365RestCalendarItem.
         .OUTPUTS
@@ -71,7 +75,10 @@
         .COMPONENT
             New-O365RestAttendee            
     #>
-    [CmdletBinding()]
+    [CmdletBinding(
+        SupportsShouldProcess = $True,
+        ConfirmImpact= 'Medium'
+    )]
     Param(
         [Parameter(Mandatory = $True)]
         [String]$Subject,
@@ -116,7 +123,8 @@
         [MailAddress]$UserPrincipalName,
 
         [Parameter(Mandatory = $True)]
-        [PSCredential]$Credential = (Get-Credential)
+        [PSCredential]
+        [System.Management.Automation.Credential()]$Credential = (Get-Credential)
     )
     BEGIN {
         If (-not $UserPrincipalName) {
@@ -201,7 +209,9 @@
             IsAllDay = $AllDay.IsPresent
         }
         Write-Verbose (ConvertTo-Json $Body)
-        Invoke-RestMethod -Uri $Uri -Credential $Credential -Method Post -ContentType $ContentType -Headers $Headers -Body (ConvertTo-Json $Body -Depth 10)
+        If ($PSCmdlet.ShouldProcess("$Subject with a start time of $Start", "create an appointment")) { 
+            Invoke-RestMethod -Uri $Uri -Credential $Credential -Method Post -ContentType $ContentType -Headers $Headers -Body (ConvertTo-Json $Body -Depth 10)
+        }
     }
     END {
     }
@@ -236,7 +246,10 @@ Function New-O365RestAttendee {
         .COMPONENT
             New-O365RestCalendarItem            
     #>
-    [CmdletBinding()]
+    [CmdletBinding(
+        SupportsShouldProcess = $True,
+        ConfirmImpact= 'Low'
+    )]
     Param (
         [Parameter(Position = 0, Mandatory = $True)]
         [MailAddress[]]$EmailAddress,
@@ -254,8 +267,10 @@ Function New-O365RestAttendee {
                 EmailAddress = $Address.Address
                 Type = $Type
             }
-            $Object = New-Object -TypeName PSObject -Property $Properties
-            Write-Output $Object
+            If ($PSCmdlet.ShouldProcess($Address.Address, "create new attendee object")) { 
+                $Object = New-Object -TypeName PSObject -Property $Properties
+                Write-Output $Object
+            }
         }
     }
     END {

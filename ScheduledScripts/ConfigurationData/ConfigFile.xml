@@ -31,8 +31,5 @@
 			<EventLogInformationID></EventLogInformationID>
 			<EventLogWarningID></EventLogWarningID>
 		</SendPasswordExpirationMail>
-		<SetOffice365License>
-			<LicenseData></LicenseData>
-		</SetOffice365License>
 	</ScriptSettings>
 </Settings>

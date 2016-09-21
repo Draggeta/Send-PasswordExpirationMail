@@ -1,4 +1,4 @@
-﻿Function Set-O365License {
+﻿qFunction Set-O365License {
     
     [CmdletBinding()]
     Param (
