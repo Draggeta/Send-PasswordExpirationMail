@@ -2,20 +2,29 @@
     
     [CmdletBinding()]
     Param (
-        [Parameter()]
-        [String]$ConfigFile,
+        [Parameter(Mandatory = $True)]
+        [ValidateScript({ Test-Path -Path $_ })]
+        [Alias('ConfigFile')]
+        [String]$ConfigurationFilePath,
 
         [Parameter()]
         [ValidateSet('ActiveDirectory','AzureAD')]
         [String]$LicenseSource = 'AzureAD',
 
-        [Parameter()]
+        [Parameter(Mandatory = $True)]
         [PSCredential]$Credential
 
     )
     BEGIN {
+
         #Load the configuration file, credentials and the file containing the license data for use in the script.
-        $ConfigData = Get-Content $ConfigFile -Raw | ConvertFrom-Json
+        $ConfigData = Get-Content $ConfigurationFilePath -Raw | ConvertFrom-Json
+        [System.Collections.ArrayList]$ErrorVariable = @()
+        [System.Collections.ArrayList]$LicensesAssigned = @()
+        [System.Collections.ArrayList]$LicensesChanged = @()
+        [System.Collections.ArrayList]$LicensesRemoved = @()
+        [System.Collections.ArrayList]$SupersededAssigned = @()
+        [System.Collections.ArrayList]$SupersededRemoved = @()
         #Login to Office 365. May need to be changed to use the Azure AD preview cmdlets. Stop execution if logging in
         #fails. May require tests as well to check if the module(s) are installed.
         Try {
@@ -24,9 +33,16 @@
             Write-Warning "Could not connect to Azure AD. Script will abort."
             Break
         }
+
     }
     PROCESS {
+
         ForEach ($AccountSkuID in $ConfigData.Licenses.PSObject.Properties.Name) {
+            [System.Collections.ArrayList]$UserLicensesAssigned = @()
+            [System.Collections.ArrayList]$UserLicensesChanged = @()
+            [System.Collections.ArrayList]$UserLicensesRemoved = @()
+            [System.Collections.ArrayList]$UserSupersededAssigned = @()
+            [System.Collections.ArrayList]$UserSupersededRemoved = @()
             #Create an empty array to store all groups that grant this license.
             [System.Collections.ArrayList]$Groups = @()
             #Create an empty array to store all users that are currently licensed.
@@ -38,8 +54,8 @@
             #Retrieve the usage location for this license.
             $UsageLocation = $ConfigData.Licenses.$AccountSkuID.UsageLocation
             #Supersedence was implemented because sometimes different licenses have options which don't work well
-            #together such as two licenses that grant the user an Exchange account. In those cases, the simple solution
-            #for now is to remove the superseded license.
+            #together, such as two licenses that grant the user an Exchange account. In those cases, the simple 
+            #solution for now is to remove the superseded license.
             #Retrieve the licenses that are superseded by this license.
             $SupersededLicenses = $ConfigData.Licenses.$AccountSkuID.Supersedes
             #Retrieve the licenses that supersede this license.
@@ -84,9 +100,10 @@
 
             #Test if a user who is currently licensed is in the list of users who should be licensed. If not, remove 
             #this SKU.
-            ForEach ($User in $CurrentlyLicensedUsers) {
+            ForEach ($CurrentlyLicensedUser in $CurrentlyLicensedUsers) {
                 If ($LicensedUsers.ContainsKey($User) -eq $False) {
                     Set-MsolUserLicense -UserPrincipalName $CurrentlyLicensedUser -RemoveLicenses $AccountSkuID
+                    $UserLicensesRemoved.Add("$CurrentlyLicensedUser")
                 }
             }
 
@@ -96,41 +113,57 @@
                 $CurrentUser = $AllMsolUser.Where{ $_.UserPrincipalName -eq $LicensedUser }
                 $CurrentUsageLocation = $CurrentUser.UsageLocation
                 $CurrentUserLicenses = $CurrentUser.Licenses.AccountSkuId
-                $CurrentUserOptions = $CurrentUser.Licenses.ServiceStatus
+                $CurrentUserOptions = $CurrentUser.Licenses.Where{ $_.AccountSkuId -eq $AccountSkuID }.ServiceStatus.Where{ $_.ProvisioningStatus -eq 'Disabled' }.ServicePlan.ServiceName
                 #Set the usage location to the correct value if incorrect.
                 If ($CurrentUsageLocation -ne $UsageLocation) {
                     Set-MsolUser -UserPrincipalName $CurrentUser.UserPrincipalName -UsageLocation $UsageLocation -Verbose
                 }
                 #Compare the currently assigned and "superseded by" licenses. If there is no match, assign the license.
-                $SkipLicense = Compare-Object -ReferenceObject $SupersededByLicenses -DifferenceObject $CurrentUserLicenses -IncludeEqual -ExcludeDifferent -ErrorAction SilentlyContinue
-                If ((-not $SupersededByLicenses) -or (-not $SkipLicense)) {
+                $AssignLicenses = $CurrentUserLicenses -notcontains $AccountSkuID
+                $RemoveSupersededLicenses = Compare-Object -ReferenceObject $SupersededLicenses -DifferenceObject $CurrentUserLicenses -IncludeEqual -ExcludeDifferent -ErrorAction SilentlyContinue
+                $SkippedLicenses = Compare-Object -ReferenceObject $SupersededByLicenses -DifferenceObject $CurrentUserLicenses -IncludeEqual -ExcludeDifferent -ErrorAction SilentlyContinue
+                If ($LicensedUser.Value -and $CurrentUserOptions) {
+                    $ChangeLicensesOptions = Compare-Object -ReferenceObject $LicensedUser.Value -DifferenceObject $CurrentUserOptions
+                }
+                ElseIf ($LicensedUser.Value -or $CurrentUserOptions) {
+                    $ChangeLicensesOptions = $True
+                }
+                If ((-not $SkippedLicenses) -and ($AssignLicenses -or $RemoveSupersededLicenses -or $SkippedLicenses)) {
+                    $LicenseOptions = New-MsolLicenseOptions -AccountSkuId $AccountSkuID -DisabledPlans $LicensedUser.Value
                     #Splat the default paramters used in Set-MsolUserLicense.
-                    $SetMsolUserLicenseParams = @{
-                        UserPrincipalName = $CurrentUser.UserPrincipalName
-                        LicenseOptions = (New-MsolLicenseOptions -AccountSkuId $AccountSkuID -DisabledPlans $LicensedUser.Value -Verbose)
+                    $SetMsolUserLicenseParams.UserPrincipalName = $CurrentUser.UserPrincipalName
+                    If ($ChangeLicensesOptions) {
+                        $SetMsolUserLicenseParams.LicenseOptions = $LicenseOptions
+                        $UserLicensesChanged.Add("$LicensedUser - $($LicenseOptions.DisabledServicePlans)")
                     }
                     #If the user has a superseded license configured, add a remove parameter to the splat to remove
                     #this license.
-                    $RemoveSupersededLicense = Compare-Object -ReferenceObject $SupersededLicenses -DifferenceObject $CurrentUserLicenses -IncludeEqual -ExcludeDifferent -ErrorAction SilentlyContinue
-                    If ($RemoveSupersededLicense) {
-                        $SetMsolUserLicenseParams.RemoveLicenses = $RemoveSupersededLicense.InputObject 
+                    If ($RemoveSupersededLicenses) {
+                        $SetMsolUserLicenseParams.RemoveLicenses = $RemoveSupersededLicenses.InputObject
+                        $UserSupersededRemoved.Add("$LicensedUser - $($RemoveSupersededLicenses.InputObject)")
                     }
                     #If the user hasn't been granted the license yet, add an add parameter to the splat to add the
                     #license to this user.
-                    If ($CurrentUserLicenses -notcontains $AccountSkuID) {
+                    If ($AssignLicenses) {
                         $SetMsolUserLicenseParams.AddLicenses = $AccountSkuID
+                        $UserLicensesAssigned.Add("$LicensedUser - $($LicenseOptions.DisabledServicePlans)")
                     }
                     #Run the command with the required parameters and, if available, the optional ones.
                     Set-MsolUserLicense @SetMsolUserLicenseParams
                 }
                 #If there is a match, don't assign the license as it is superseded.
-                ElseIf ($SkipLicense) {
-                    Write-Output "Skipped license $AccountSkuID as it was superseded for this user by license(s) $($SkipLicense.InputObject)"
+                ElseIf ($SkippedLicenses) {
+                    ForEach ($SkippedLicense in $SkippedLicenses){
+                        $UserSupersededAssigned.Add("$LicensedUser - $SkippedLicense")
+                    }
                 }
             }
+
         }
+
     }
     END {
+
         #region Log and Mail
         <#
         #region Mail Parameters
@@ -159,5 +192,6 @@
         Send-MailMessage @emailparams
         #>
         #endregion
+
     }
 }
