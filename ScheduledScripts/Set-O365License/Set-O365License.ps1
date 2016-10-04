@@ -80,7 +80,7 @@
             $SupersededByLicenses = $ConfigData.Licenses.$AccountSkuID.SupersededBy
 
             #Fill the $Groups array/variable with all groups that assign this license.
-            $Groups.AddRange([array]$ConfigData.Licenses.$AccountSkuID.Groups.PSObject.Properties.Name)
+            $Groups.AddRange([Array]$ConfigData.Licenses.$AccountSkuID.Groups.PSObject.Properties.Name)
             #Fill the $CurrentlyLicensedUsers array with all users currently licensed with this SKU. This is used for 
             #when you have multiple license options per SKU that can be assigned to one user.
             $CurrentlyLicensedUsers.AddRange([Array]($AllMsolUser.Where{ $_.Licenses.AccountSkuID -Contains $AccountSkuID }).UserPrincipalName)
