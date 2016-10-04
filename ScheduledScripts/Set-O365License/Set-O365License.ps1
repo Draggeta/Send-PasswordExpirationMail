@@ -17,6 +17,14 @@
     )
     BEGIN {
 
+        #Import the modules required to securely pull the passwords from the credential manager, manage ActiveDirectory
+        #and Azure AD.
+        Import-Module CredentialManager
+        Import-Module MSOnline
+        If ($LicenseSource = 'ActiveDirectory') {
+            Import-Module ActiveDirectory
+        }
+
         #Create empty arrays for the logs. These logs collect the specific Sku logs so they can be sent at the end.
         [System.Collections.ArrayList]$LogErrorVariable = @()
         [System.Collections.ArrayList]$LogLicensesAssigned = @()
@@ -24,18 +32,23 @@
         [System.Collections.ArrayList]$LogLicensesRemoved = @()
         [System.Collections.ArrayList]$LogSupersededAssigned = @()
         [System.Collections.ArrayList]$LogSupersededRemoved = @()
+
         #Load the configuration file, and convert from JSON. If it fails, stop the script execution.
         Try {
             $ConfigData = Get-Content $ConfigurationFilePath -Raw | ConvertFrom-Json
         }
         Catch [ArgumentException] {
-            $LogErrorVariable = "Error Message: $($_.Exception.Message)`nFailed Item: $($_.Exception.ItemName)"
-            $EmailParams += @{
-                Subject = '[Error] Set-O365License: Failed to read the config file correctly'
-                Body = "There is something wrong with the configuration file. See detailed error(s) below.`n $LogErrorVariable"
-            }
+            #$LogErrorVariable = "Error Message: $($_.Exception.Message)`nFailed Item: $($_.Exception.ItemName)"
             Break
         }
+        #Set the email parameters.
+        $EmailParams = @{}
+        $EmailParams.From = $ConfigData.Settings.EmailServerSettings.From
+        $EmailParams.SmtpServer =  $ConfigData.Settings.EmailServerSettings.SmtpServer
+        $EmailParams.Port = $ConfigData.Settings.EmailServerSettings.Port
+        $EmailParams.UseSsl = $ConfigData.Settings.EmailServerSettings.UseSsl
+        $EmailParams.Credential = Get-StoredCredential -Target $ConfigData.Settings.Credentials.MailCredentials
+
         #Login to Office 365. May need to be changed to use the Azure AD preview cmdlets. Stop execution if logging in
         #fails. May require tests as well to check if the module(s) are installed.
         Try {
@@ -43,10 +56,10 @@
         } 
         Catch {
             $LogErrorVariable = "Error Message: $($_.Exception.Message)`nFailed Item: $($_.Exception.ItemName)"
-            $EmailParams += @{
-                Subject = '[Error] Set-O365License: Failed to log in to Azure AD'
-                Body = "Logging in to Azure AD failed. See detailed error(s) below.`n $LogErrorVariable"
-            }
+            $EmailParams.Subject = '[Error] Set-O365License: Failed to log in to Azure AD'
+            $EmailParams.Body = "Logging in to Azure AD failed. See detailed error(s) below.`n $LogErrorVariable"
+            $EmailParams.To = $ConfigData.Settings.EmailServerSettings.To
+            Send-MailMessage @EmailParams
             Break
         }
 
@@ -167,6 +180,12 @@
                     #If license options need to be changed, add the parameter/value to the splat variable.
                     If ($ChangeLicensesOptions) {
                         $SetMsolUserLicenseParams.LicenseOptions = $LicenseOptions
+                        If ($LicenseOptions.DisabledServicePlans) {
+                            "$($LicensedUser.Key) - $($LicenseOptions.DisabledServicePlans)`n"
+                        }
+                        ElseIf (-not $LicenseOptions.DisabledServicePlans) {
+                            "$($LicensedUser.Key) - No disabled options`n"
+                        }
                         $LogSkuLicensesChanged.Add("$($LicensedUser.Key) - $($LicenseOptions.DisabledServicePlans)`n")
                     }
                     #If the user has a superseded license configured, add a remove parameter to the splat to remove
@@ -191,7 +210,7 @@
                     }
                 }
             }
-
+            #Add the individual logs for the Skus to the logs for the whole function.
             If ($LogSkuLicensesAssigned) { $LogLicensesAssigned.Add("Assigned $AccountSkuID to the following users:`n $LogSkuLicensesAssigned`n") }
             If ($LogSkuLicensesChanged) { $LogLicensesChanged.Add("Changed $AccountSkuID options for the following users:`n $LogSkuLicensesChanged`n") }
             If ($LogSkuLicensesRemoved) { $LogLicensesRemoved.Add("Removed $AccountSkuID from the following users:`n $LogSkuLicensesRemoved`n") }
@@ -202,24 +221,26 @@
     }
     END {
 
-        [string]$body = @(
-            if (-not $LogErrorVariable) {"The script ran successfully. No errors occured. Any changes made will be listed below.`n"}
-            elseif ($LogErrorVariable) {"The script completed with errors. Any changes and errors will be listed below.`n $LogErrorVariable`n"}
-            if ($LogLicensesAssigned) {"Assigned the following licenses:`n $LogLicensesAssigned`n"}
-            if ($LogLicensesChanged) {"Changed the following license options:`n $LogLicensesChanged`n"}
-            if ($LogLicensesRemoved) {"Removed the following licenses:`n $LogLicensesRemoved`n"}
-            if ($LogSupersededAssigned) {"The following licenses are assigned but superseded:`n $LogSupersededAssigned`n"}
-            if ($LogSupersededRemoved) {"Removed the following superseded licenses:`n $LogSupersededRemoved`n"}
+        #Compose the body from all collected logs. Only logs with entries will be displayed.
+        [string]$Body = @(
+            If (-not $LogErrorVariable) {"The script ran successfully. No errors occured. Any changes made will be listed below.`n"}
+            ElseIf ($LogErrorVariable) {"The script completed with errors. Any changes and errors will be listed below.`n $LogErrorVariable`n"}
+            If ($LogLicensesAssigned) {"Assigned the following licenses:`n $LogLicensesAssigned`n"}
+            If ($LogLicensesChanged) {"Changed the following license options:`n $LogLicensesChanged`n"}
+            If ($LogLicensesRemoved) {"Removed the following licenses:`n $LogLicensesRemoved`n"}
+            If ($LogSupersededAssigned) {"The following licenses are assigned but superseded:`n $LogSupersededAssigned`n"}
+            If ($LogSupersededRemoved) {"Removed the following superseded licenses:`n $LogSupersededRemoved`n"}
         )
-        [string]$subject = @(
-            if (-not $LogErrorVariable) {"[Success] Set-O365License: Script ran succesfully"}
-            elseif ($LogErrorVariable) {"[Warning] Set-O365License: Script completed with errors"}
+        #Compose the subject. Subject description depends on if errors occured or not.
+        [string]$Subject = @(
+            If (-not $LogErrorVariable) {"[Success] Set-O365License: Script ran succesfully"}
+            ElseIf ($LogErrorVariable) {"[Warning] Set-O365License: Script completed with errors"}
         )
-        $EmailParams += @{
-            Subject = $subject
-            Body = $body
-        }        
-        #Send-MailMessage @emailparams
+        #Set the email parameters and send the message.
+        $EmailParams.Subject = $Subject
+        $EmailParams.Body = $Body
+        $EmailParams.To = $ConfigData.Settings.EmailServerSettings.To
+        Send-MailMessage @EmailParams
 
     }
 }
