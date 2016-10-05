@@ -23,7 +23,7 @@
             #and Azure AD.
             Import-Module CredentialManager
             Import-Module MSOnline
-            If ($LicenseSource = 'ActiveDirectory') {
+            If ($LicenseSource -eq 'ActiveDirectory') {
                 Import-Module ActiveDirectory
             }
         #endregion
@@ -197,12 +197,11 @@
                         If ($ChangeLicensesOptions) {
                             $SetMsolUserLicenseParams.LicenseOptions = $LicenseOptions
                             If ($LicenseOptions.DisabledServicePlans) {
-                                "$($LicensedUser.Key) - $($LicenseOptions.DisabledServicePlans)`n"
+                                $LogSkuLicensesChanged.Add("$($LicensedUser.Key) - $($LicenseOptions.DisabledServicePlans)`n")
                             }
                             ElseIf (-not $LicenseOptions.DisabledServicePlans) {
-                                "$($LicensedUser.Key) - No disabled options`n"
+                                $LogSkuLicensesChanged.Add("$($LicensedUser.Key) - No disabled options`n")
                             }
-                            $LogSkuLicensesChanged.Add("$($LicensedUser.Key) - $($LicenseOptions.DisabledServicePlans)`n")
                         }
                         #If the user has a superseded license configured, add a remove parameter to the splat to remove
                         #this license.
@@ -214,7 +213,12 @@
                         #license to this user.
                         If ($AssignLicenses) {
                             $SetMsolUserLicenseParams.AddLicenses = $AccountSkuID
-                            $LogSkuLicensesAssigned.Add("$($LicensedUser.Key) - $($LicenseOptions.DisabledServicePlans)`n")
+                            If ($LicenseOptions.DisabledServicePlans) {
+                                $LogSkuLicensesAssigned.Add("$($LicensedUser.Key) - $($LicenseOptions.DisabledServicePlans)`n")
+                            }
+                            ElseIf (-not $LicenseOptions.DisabledServicePlans) {
+                                $LogSkuLicensesAssigned.Add("$($LicensedUser.Key) - No disabled options`n")
+                            }
                         }
                         #Run the command with the required parameters and, if available, the optional ones.
                         Set-MsolUserLicense @SetMsolUserLicenseParams -ErrorVariable LogErrorVariable
@@ -222,7 +226,7 @@
                     #If the license needs to be skipped, don't assign the license as it is superseded.
                     ElseIf ($SkippedLicenses) {
                         ForEach ($SkippedLicense in $SkippedLicenses){
-                            $LogSkuSupersededAssigned.Add("$($LicensedUser.Key) - $SkippedLicense`n")
+                            $LogSkuSupersededAssigned.Add("$($LicensedUser.Key) - $($SkippedLicense.InputObject)`n")
                         }
                     }
                 }
@@ -234,7 +238,7 @@
                 If ($LogSkuLicensesChanged) { $LogLicensesChanged.Add("Changed $AccountSkuID options for the following users:`n $LogSkuLicensesChanged`n") }
                 If ($LogSkuLicensesRemoved) { $LogLicensesRemoved.Add("Removed $AccountSkuID from the following users:`n $LogSkuLicensesRemoved`n") }
                 If ($LogSkuSupersededAssigned) { $LogSupersededAssigned.Add("License $AccountSkuID is assigned but superseded for the following users. Please check:`n $LogSkuSupersededAssigned`n") }
-                If ($LogSkuSupersededRemoved) { $LogSupersededRemoved.Add("Removed $AccountSkuID due to supersedence from the following users:`n $LogSkuSupersededRemoved`n") }
+                If ($LogSkuSupersededRemoved) { $LogSupersededRemoved.Add("Due to supersedence by $AccountSkuID, the following users had licenses removed:`n $LogSkuSupersededRemoved`n") }
             #endregion
         }
 
@@ -245,12 +249,12 @@
             #Compose the body from all collected logs. Only logs with entries will be displayed.
             [string]$Body = @(
                 If (-not $LogErrorVariable) {"The script ran successfully. No errors occured. Any changes made will be listed below.`n"}
-                ElseIf ($LogErrorVariable) {"The script completed with errors. Any changes and errors will be listed below.`n $LogErrorVariable`n"}
-                If ($LogLicensesAssigned) {"Assigned the following licenses:`n $LogLicensesAssigned`n"}
-                If ($LogLicensesChanged) {"Changed the following license options:`n $LogLicensesChanged`n"}
-                If ($LogLicensesRemoved) {"Removed the following licenses:`n $LogLicensesRemoved`n"}
-                If ($LogSupersededAssigned) {"The following licenses are assigned but superseded:`n $LogSupersededAssigned`n"}
-                If ($LogSupersededRemoved) {"Removed the following superseded licenses:`n $LogSupersededRemoved`n"}
+                ElseIf ($LogErrorVariable) {"`nThe script completed with errors. Any changes and errors will be listed below.`n $LogErrorVariable`n"}
+                If ($LogLicensesAssigned) {"`nAssigned the following licenses:`n $LogLicensesAssigned`n"}
+                If ($LogLicensesChanged) {"`nChanged the following license options:`n $LogLicensesChanged`n"}
+                If ($LogLicensesRemoved) {"`nRemoved the following licenses:`n $LogLicensesRemoved`n"}
+                If ($LogSupersededAssigned) {"`nThe following licenses are assigned but superseded:`n $LogSupersededAssigned`n"}
+                If ($LogSupersededRemoved) {"`nRemoved the following superseded licenses:`n $LogSupersededRemoved`n"}
             )
             #Compose the subject. Subject description depends on if errors occured or not.
             [string]$Subject = @(
