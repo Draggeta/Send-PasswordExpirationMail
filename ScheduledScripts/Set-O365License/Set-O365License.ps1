@@ -9,6 +9,11 @@
         [String]$ConfigurationFilePath,
 
         [Parameter()]
+        [ValidateScript({ Test-Path -Path $_ })]
+        [Alias('EmailHtml')]
+        [String]$EmailHtmlFilePath,
+
+        [Parameter()]
         [ValidateSet('ActiveDirectory','AzureAD')]
         [String]$LicenseSource = 'AzureAD',
 
@@ -152,11 +157,11 @@
                 foreach ($CurrentlyLicensedUser in $CurrentlyLicensedUsers) {
                     if ($LicensedUsers.ContainsKey($CurrentlyLicensedUser) -eq $False) {
                         try {
-                            Set-MsolUserLicense -UserPrincipalName $CurrentlyLicensedUser -RemoveLicenses $AccountSkuID -ErrorAction Stop
-                            $LogSkuLicensesRemoved.Add("$CurrentlyLicensedUser`n")
+                            #Set-MsolUserLicense -UserPrincipalName $CurrentlyLicensedUser -RemoveLicenses $AccountSkuID -ErrorAction Stop
+                            $LogSkuLicensesRemoved.Add("<li>$CurrentlyLicensedUser</li>")
                         }
                         catch {
-                            $LogErrorVariable.Add("Failed to remove license $AccountSkuID from $CurrentlyLicensedUser")
+                            $LogErrorVariable.Add("<li>Failed to remove license $($AccountSkuID.Replace('montessorilyceumrotterdam:','')) from $CurrentlyLicensedUs</li>")
                         }
                     }
                 }
@@ -172,7 +177,7 @@
                     #Set the usage location to the correct value if incorrect.
                     if ($CurrentUsageLocation -ne $UsageLocation) {
                         try {
-                            Set-MsolUser -UserPrincipalName $CurrentUser.UserPrincipalName -UsageLocation $UsageLocation -ErrorAction Stop
+                            #Set-MsolUser -UserPrincipalName $CurrentUser.UserPrincipalName -UsageLocation $UsageLocation -ErrorAction Stop
                         }
                         catch {
                             $LogErrorVariable.Add("Failed to set usage location $UsageLocation for $($CurrentUser.UserPrincipalName)")
@@ -201,7 +206,7 @@
                     #superseded or won't be superseded by this license, run the script below.
                     if ((-not $SkippedLicenses) -and ($AssignLicenses -or $RemoveSupersededLicenses -or $ChangeLicensesOptions)) {
                         $LicenseOptions = New-MsolLicenseOptions -AccountSkuId $AccountSkuID -DisabledPlans $LicensedUser.Value -ErrorVariable LogErrorVariable
-                        #Splat the default paramters used in Set-MsolUserLicense.
+                        #Splat the default paramters used in #Set-MsolUserLicense.
                         $SetMsolUserLicenseParams = @{}
                         $SetMsolUserLicenseParams.UserPrincipalName = $CurrentUser.UserPrincipalName
                         #If license options need to be changed, add the parameter/value to the splat variable.
@@ -220,27 +225,27 @@
                         }
                         #Run the command with the required parameters and, if available, the optional ones.
                         try {
-                            Set-MsolUserLicense @SetMsolUserLicenseParams -ErrorVariable LogErrorVariable
+                            #Set-MsolUserLicense @SetMsolUserLicenseParams -ErrorVariable LogErrorVariable
                             switch ($SetMsolUserLicenseParams) {
-                                { $_.RemoveLicenses }                                               { $LogSkuSupersededRemoved.Add("$($RemoveSupersededLicenses.InputObject  -join ', ') - $($LicensedUser.Key)") }
-                                { $_.AddLicenses -and $LicenseOptions.DisabledServicePlans }        { $LogSkuLicensesAssigned.Add("$($LicenseOptions.DisabledServicePlans -join ', ') - $($LicensedUser.Key)"); break }
-                                { $_.AddLicenses -and -not $LicenseOptions.DisabledServicePlans }   { $LogSkuLicensesAssigned.Add("No disabled options - $($LicensedUser.Key)"); break }
-                                { $_.LicenseOptions -and $LicenseOptions.DisabledServicePlans }     { $LogSkuLicensesChanged.Add("$($LicenseOptions.DisabledServicePlans -join ', ') - $($LicensedUser.Key)") }
-                                { $_.LicenseOptions -and -not$LicenseOptions.DisabledServicePlans } { $LogSkuLicensesChanged.Add("No disabled options - $($LicensedUser.Key)") }
+                                { $_.RemoveLicenses }                                               { $LogSkuSupersededRemoved.Add("<li>$($RemoveSupersededLicenses.InputObject.Replace('montessorilyceumrotterdam:','')) - $($LicensedUser.Key)</li>") }
+                                { $_.AddLicenses -and $LicenseOptions.DisabledServicePlans }        { $LogSkuLicensesAssigned.Add("<li>$($LicenseOptions.DisabledServicePlans -join ', ') - $($LicensedUser.Key)</li>"); break }
+                                { $_.AddLicenses -and -not $LicenseOptions.DisabledServicePlans }   { $LogSkuLicensesAssigned.Add("<li>No disabled options - $($LicensedUser.Key)</li>"); break }
+                                { $_.LicenseOptions -and $LicenseOptions.DisabledServicePlans }     { $LogSkuLicensesChanged.Add("<li>$($LicenseOptions.DisabledServicePlans -join ', ') - $($LicensedUser.Key)</li>") }
+                                { $_.LicenseOptions -and -not$LicenseOptions.DisabledServicePlans } { $LogSkuLicensesChanged.Add("<li>No disabled options - $($LicensedUser.Key)</li>") }
                             }
                         }
                         catch {
                             switch ($SetMsolUserLicenseParams) {
-                                { $_.RemoveLicenses }   { $LogErrorVariable.Add("Failed to remove superseded license $($SetMsolUserLicenseParams.RemoveLicenses) from $($LicensedUser.Key)`n") } 
-                                { $_.AddLicenses }      { $LogErrorVariable.Add("Failed to add license $($SetMsolUserLicenseParams.AddLicenses) to $($LicensedUser.Key)`n") }
-                                { $_.LicenseOptions }   { $LogErrorVariable.Add("Failed to change license options $($SetMsolUserLicenseParams.LicenseOptions -join ', ') for $($LicensedUser.Key)`n") }
+                                { $_.RemoveLicenses }   { $LogErrorVariable.Add("<li>Failed to remove superseded license $($SetMsolUserLicenseParams.RemoveLicenses) from $($LicensedUser.Key)</li>") } 
+                                { $_.AddLicenses }      { $LogErrorVariable.Add("<li>Failed to add license $($SetMsolUserLicenseParams.AddLicenses) to $($LicensedUser.Key)</li>") }
+                                { $_.LicenseOptions }   { $LogErrorVariable.Add("<li>Failed to change license options $($SetMsolUserLicenseParams.LicenseOptions -join ', ') for $($LicensedUser.Key)</li>") }
                             }
                         }
                     }
                     #If the license needs to be skipped, don't assign the license as it is superseded.
                     elseif ($SkippedLicenses) {
                         foreach ($SkippedLicense in $SkippedLicenses){
-                            $LogSkuSupersededAssigned.Add("$($SkippedLicense.InputObject -join ', ') - $($LicensedUser.Key)")
+                            $LogSkuSupersededAssigned.Add("<li>$($SkippedLicense.InputObject.Replace('montessorilyceumrotterdam:','')) - $($LicensedUser.Key)</li>")
                         }
                     }
                 }
@@ -248,11 +253,11 @@
 
             #region Log performed activities
                 #Add the individual logs for the Skus to the logs for the whole function.
-                if ($LogSkuLicensesAssigned) { $LogLicensesAssigned.Add("<p>Assigned $AccountSkuID to the following users:</br>$($LogSkuLicensesAssigned -join '</br>')</p>") }
-                if ($LogSkuLicensesChanged) { $LogLicensesChanged.Add("<p>Changed $AccountSkuID options for the following users:</br>$($LogSkuLicensesChanged -join '</br>')</p>") }
-                if ($LogSkuLicensesRemoved) { $LogLicensesRemoved.Add("<p>Removed $AccountSkuID from the following users:</br>$($LogSkuLicensesRemoved -join '</br>')</p>") }
-                if ($LogSkuSupersededAssigned) { $LogSupersededAssigned.Add("<p>License $AccountSkuID is assigned but superseded for the following users. Please check:</br>$($LogSkuSupersededAssigned -join '</br>')</p>") }
-                if ($LogSkuSupersededRemoved) { $LogSupersededRemoved.Add("<p>Due to supersedence by $AccountSkuID, the following users had licenses removed:</br>$($LogSkuSupersededRemoved -join '</br>')</p>") }
+                if ($LogSkuLicensesAssigned) { $LogLicensesAssigned.Add("<p><h4>Assigned $($AccountSkuID.Replace('montessorilyceumrotterdam:','')) to the following users:</h4><ul>$($LogSkuLicensesAssigned)</ul></p>") }
+                if ($LogSkuLicensesChanged) { $LogLicensesChanged.Add("<p><h4>Changed $($AccountSkuID.Replace('montessorilyceumrotterdam:','')) options for the following users:</h4><ul>$($LogSkuLicensesChanged)</ul></p>") }
+                if ($LogSkuLicensesRemoved) { $LogLicensesRemoved.Add("<p><h4>Removed $($AccountSkuID.Replace('montessorilyceumrotterdam:','')) from the following users:</h4><ul>$($LogSkuLicensesRemoved)</ul></p>") }
+                if ($LogSkuSupersededAssigned) { $LogSupersededAssigned.Add("<p><h4>License $($AccountSkuID.Replace('montessorilyceumrotterdam:','')) is assigned but superseded for the following users. Please check:</h4><ul>$($LogSkuSupersededAssigned)</ul></p>") }
+                if ($LogSkuSupersededRemoved) { $LogSupersededRemoved.Add("<p><h4>Due to supersedence by $($AccountSkuID.Replace('montessorilyceumrotterdam:','')), the following users had licenses removed:</h4><ul>$($LogSkuSupersededRemoved)</ul></p>") }
             #endregion
         }
 
@@ -260,16 +265,28 @@
     END {
 
         #region Prepare and send email message
-            #Compose the body from all collected logs. Only logs with entries will be displayed.
-            [String]$Body = @(
-                if (-not $LogErrorVariable) {"The script ran successfully. No errors occured. Any changes made will be listed below.</br></br>"}
-                elseif ($LogErrorVariable) {"<p>The script completed with errors. Any changes and errors will be listed below.</br>$LogErrorVariable</p>"}
-                if ($LogLicensesAssigned) {"<p>Assigned the following licenses:</br>$LogLicensesAssigned</p>"}
-                if ($LogLicensesChanged) {"<p>Changed the following license options:</br>$LogLicensesChanged</p>"}
-                if ($LogLicensesRemoved) {"<p>Removed the following licenses:</br>$LogLicensesRemoved</p>"}
-                if ($LogSupersededAssigned) {"<p>The following licenses are assigned but superseded:</br>$LogSupersededAssigned</p>"}
-                if ($LogSupersededRemoved) {"<p>Removed the following superseded licenses:</br>$LogSupersededRemoved</p>"}
-            )
+            if (-not $LogErrorVariable)     { $ScriptStatus = "<p>The script ran successfully. No errors occured. Any changes made will be listed below.</p>" }
+            elseif ($LogErrorVariable)      { $ScriptStatus = "<p>The script completed with errors. Any changes and errors will be listed below.</p><p><h2>Errors</h2><ul>$LogErrorVariable</ul></p>" }
+            if ($LogLicensesAssigned)       { $ScriptAction += "<p><h2>Assigned licenses</h2>$LogLicensesAssigned</p>" }
+            if ($LogLicensesChanged)        { $ScriptAction += "<p><h2>Changed license options</h2>$LogLicensesChanged</p>" }
+            if ($LogLicensesRemoved)        { $ScriptAction += "<p><h2>Removed licenses</h2>$LogLicensesRemoved</p>" }
+            if ($LogSupersededAssigned)     { $ScriptAction += "<p><h2>Assigned but superseded</h2>$LogSupersededAssigned</p>" }
+            if ($LogSupersededRemoved)      { $ScriptAction += "<p><h2>Removed superseded licenses</h2>$LogSupersededRemoved</p>" }
+            if ($EmailHtmlFilePath) {
+                $EmailHtmlFile = Get-Content $EmailHtmlFilePath -Raw
+                $EmailHtmlFile = $EmailHtmlFile.Replace('SCRIPTTITLE','Set-O365License')
+                $EmailHtmlFile = $EmailHtmlFile.Replace('SCRIPTSTATUS',$ScriptStatus)
+                $EmailHtmlFile = $EmailHtmlFile.Replace('SCRIPTACTION',$ScriptAction)
+                $EmailHtmlFile = $EmailHtmlFile.Replace('DATETIME',(Get-Date).Date)
+                [String]$Body = $EmailHtmlFile
+            }
+            elseif (-not $EmailHtmlFilePath) {
+                #Compose the body from all collected logs. Only logs with entries will be displayed.
+                [String]$Body = @(
+                    $ScriptStatus
+                    $ScriptAction
+                )
+            }
             #Compose the subject. Subject description depends on if errors occured or not.
             [String]$Subject = @(
                 if (-not $LogErrorVariable) {"[Success] Set-O365License: Script ran succesfully"}
