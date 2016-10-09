@@ -317,8 +317,8 @@
             elseif ($LogErrorVariable)      { $ScriptStatus =  "<p>The script completed with errors. Any changes and warnings will be listed below.</p>"
                                               $ScriptError  =  "<p><h2>Warnings</h2><ul>$LogErrorVariable</ul></p>" }
             #As I wanted to keep the html file simple, I specified the License status table design in the script.
-            #May not be the best solution, as it doesn't take into consideration the fact that no template may be used
-            #as well.
+            #May not be the best solution, as it doesn't take into consideration the fact that no HTML template may be
+            #used as well.
             if ($LogLicensesStatus)         { $ScriptTable  =  "<tr>
                                                                 <th align='left'>License</th>
                                                                 <th align='left'>Total</th>
