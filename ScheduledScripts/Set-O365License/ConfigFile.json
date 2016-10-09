@@ -1,0 +1,94 @@
+﻿{
+	"Info": [
+		"This is the JSON based Configuration for Set-O365License",
+		"Please do not edit any fields without any permission of YOUR NAME HERE."
+	],
+	"Licenses": {
+		"tennantname:AAD_PREMIUM": {
+			"Groups": {
+				"APP_O365_AzureAD-Premium": {
+					"DisabledPlans": []
+				}
+			},
+			"UsageLocation": "NL",
+			"Supersedes": [],
+			"SupersededBy": []
+		},
+		"tennantname:ENTERPRISEPACK_FACULTY": {
+			"Groups": {
+				"APP_O365_Faculty_Standard-E3": {
+					"DisabledPlans": [
+						"RMS_S_ENTERPRISE",
+						"YAMMER_EDU"
+					]
+				},
+				"APP_O365_Faculty_Standard-E3_SharePoint": {
+					"DisabledPlans": [
+						"RMS_S_ENTERPRISE",
+						"YAMMER_EDU"
+					]
+				}
+			},
+			"UsageLocation": "NL",
+			"Supersedes": [
+				"tennantname:STANDARDWOFFPACK_FACULTY"
+			],
+			"SupersededBy": []
+		},
+		"tennantname:STANDARDWOFFPACK_FACULTY": {
+			"Groups": {
+				"APP_O365_Faculty_Standard": {
+					"DisabledPlans": [
+						"YAMMER_EDU"
+					]
+				},
+				"APP_O365_Faculty_Standard_SharePoint": {
+					"DisabledPlans": [
+						"YAMMER_EDU"
+					]
+				}
+			},
+			"UsageLocation": "NL",
+			"Supersedes": [],
+			"SupersededBy": [
+				"tennantname:ENTERPRISEPACK_FACULTY"
+			]
+		},
+		"tennantname:STANDARDWOFFPACK_STUDENT": {
+			"Groups": {
+				"APP_O365_Student_Standard": {
+					"DisabledPlans": [
+						"PROJECTWORKMANAGEMENT",
+						"YAMMER_EDU"
+					]
+				}
+			},
+			"UsageLocation": "NL",
+			"Supersedes": [],
+			"SupersededBy": []
+		},
+		"tennantname:OFFICESUBSCRIPTION_STUDENT": {
+			"Groups": {
+				"APP_O365_Student_Standard": {
+					"DisabledPlans": []
+				}
+			},
+			"UsageLocation": "NL",
+			"Supersedes": [],
+			"SupersededBy": []
+		}
+	},
+	"Settings": {
+		"Credentials": {
+			"MailCredentials": ""
+		},
+		"EmailServerSettings": {
+			"To": "",
+			"From": "",
+			"SmtpServer": "",
+			"Port": "",
+			"UseSsl": true,
+			"BodyAsHtml": true
+		}
+	}
+}
