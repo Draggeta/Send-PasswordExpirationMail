@@ -1,7 +1,6 @@
 ﻿{
 	"Info": [
 		"This is the JSON based Configuration for Set-O365License",
-		"",
 		"Please do not edit any fields without any permission of YOUR NAME HERE."
 	],
 	"Licenses": {
@@ -39,6 +38,11 @@
 		"tennantname:STANDARDWOFFPACK_FACULTY": {
 			"Groups": {
 				"APP_O365_Faculty_Standard": {
+					"DisabledPlans": [
+						"YAMMER_EDU"
+					]
+				},
+				"APP_O365_Faculty_Standard_SharePoint": {
 					"DisabledPlans": [
 						"YAMMER_EDU"
 					]
