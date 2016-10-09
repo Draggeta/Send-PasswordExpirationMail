@@ -315,21 +315,16 @@
             #Check if something is placed in the error array and set the correct message
             if (-not $LogErrorVariable)     { $ScriptStatus =  "<p>The script ran successfully. No errors occured. Any changes made will be listed below.</p>" }
             elseif ($LogErrorVariable)      { $ScriptStatus =  "<p>The script completed with errors. Any changes and warnings will be listed below.</p>"
-                                              $ScriptAction += "<p><h2>Warnings</h2><ul>$LogErrorVariable</ul></p>" }
+                                              $ScriptError  =  "<p><h2>Warnings</h2><ul>$LogErrorVariable</ul></p>" }
             #As I wanted to keep the html file simple, I specified the License status table design in the script.
             #May not be the best solution, as it doesn't take into consideration the fact that no template may be used
             #as well.
-            if ($LogLicensesStatus)         { $ScriptAction += "<p><h2>Licenses status</h2>
-                                                                    <table align='center' width='100%' style='color: #606060; font-family: Calibri; border-collapse: collapse;'>
-                                                                    <tr>
-                                                                    <th align='left'>License</th>
-                                                                    <th align='left'>Total</th>
-                                                                    <th align='left'>Used</th>
-                                                                    <th align='left'>Available</th>
-                                                                    </tr>
-                                                                    $LogLicensesStatus
-                                                                    </table>
-                                                                </p>" }
+            if ($LogLicensesStatus)         { $ScriptTable  =  "<tr>
+                                                                <th align='left'>License</th>
+                                                                <th align='left'>Total</th>
+                                                                <th align='left'>Used</th>
+                                                                <th align='left'>Available</th>
+                                                                </tr>$LogLicensesStatus" }
             #Fill the arrays for the other logs.
             if ($LogLicensesAssigned)       { $ScriptAction += "<p><h2>Assigned licenses</h2>$LogLicensesAssigned</p>" }
             if ($LogLicensesChanged)        { $ScriptAction += "<p><h2>Changed license options</h2>$LogLicensesChanged</p>" }
@@ -342,6 +337,8 @@
                 $EmailHtmlFile = Get-Content $EmailHtmlFilePath -Raw
                 $EmailHtmlFile = $EmailHtmlFile.Replace('SCRIPTTITLE','Set-O365License')
                 $EmailHtmlFile = $EmailHtmlFile.Replace('SCRIPTSTATUS',$ScriptStatus)
+                $EmailHtmlFile = $EmailHtmlFile.Replace('SCRIPTERROR',$ScriptError)
+                $EmailHtmlFile = $EmailHtmlFile.Replace('SCRIPTTABLE',$ScriptTable)
                 $EmailHtmlFile = $EmailHtmlFile.Replace('SCRIPTACTION',$ScriptAction)
                 $EmailHtmlFile = $EmailHtmlFile.Replace('DATETIME',(Get-Date -UFormat "%Y-%m-%d %T %Z"))
                 [String]$Body  = $EmailHtmlFile
@@ -351,6 +348,8 @@
                 #Compose the body from all collected logs. Only logs with entries will be displayed.
                 [String]$Body = @(
                     $ScriptStatus
+                    $ScriptError
+                    $ScriptTable
                     $ScriptAction
                 )
             }
