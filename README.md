@@ -5,7 +5,7 @@ This repository contains various scripts I use to make my life easier. While the
 Right now it contains the following scripts and modules:
 
 | Module/Script | Type | Status | Description | 
-|:---: | :---: | :---: | :---: |
+|:--- | :--- | :--- | :--- |
 | O365-RestV1 | Module | Finished | Module to use the O365 REST API. Right now only adds calendar items |
 | O365-Tools | Module | Finished | Module to connect to Microsoft cloud services a bit easier |
 | Send-PasswordExpirationMail | Script | In Development | Currently functions. Trying to rewrite it to make it better | 
