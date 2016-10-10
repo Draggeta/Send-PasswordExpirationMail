@@ -1,7 +1,10 @@
 ﻿{
 	"Info": [
 		"This is the JSON based Configuration for Set-O365License",
-		"Please do not edit any fields without any permission of YOUR NAME HERE."
+		"Please do not edit any fields without any permission of YOUR NAME HERE.",
+		"The Licenses section contains the available licenses in your tennant. Each license then contains the groups which assign one or more license options.",
+		"If a license supersedes or is superseded by another license, like when an E3 license supersedes a normal license, write them in their respective blocks. This makes it easier to resolve conflicts",
+		"Lastly, the Settings section contains parameters the script should use for credentials and to send emails."
 	],
 	"Licenses": {
 		"tennantname:AAD_PREMIUM": {
