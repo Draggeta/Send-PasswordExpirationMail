@@ -162,7 +162,7 @@
                 foreach ($CurrentlyLicensedUser in $CurrentlyLicensedUsers) {
                     if ($LicensedUsers.ContainsKey($CurrentlyLicensedUser) -eq $False) {
                         try {
-                            #Set-MsolUserLicense -UserPrincipalName $CurrentlyLicensedUser -RemoveLicenses $AccountSkuID -ErrorAction Stop
+                            Set-MsolUserLicense -UserPrincipalName $CurrentlyLicensedUser -RemoveLicenses $AccountSkuID -ErrorAction Stop
                             #Log the removal of the license by adding it as an HTML list item to the current SKU 
                             #removed licenses array.
                             $LogSkuLicensesRemoved.Add("<li>$CurrentlyLicensedUser</li>")
@@ -186,7 +186,7 @@
                     #Set the usage location to the correct value if incorrect.
                     if ($CurrentUsageLocation -ne $UsageLocation) {
                         try {
-                            #Set-MsolUser -UserPrincipalName $CurrentUser.UserPrincipalName -UsageLocation $UsageLocation -ErrorAction Stop
+                            Set-MsolUser -UserPrincipalName $CurrentUser.UserPrincipalName -UsageLocation $UsageLocation -ErrorAction Stop
                         }
                         catch {
                             #Log the failure to set the usage location by adding it as an HTML list item to the general
@@ -241,17 +241,17 @@
                         }
                         #Run the command with the required parameters and, if available, the optional ones.
                         try {
-                            #Set-MsolUserLicense @SetMsolUserLicenseParams -ErrorVariable LogErrorVariable
+                            Set-MsolUserLicense @SetMsolUserLicenseParams -ErrorVariable LogErrorVariable
                             #Log the performed changes by adding them as an HTML list item to their respective current
                             #SKU log array. There is a break purposefully on the $LogSkuLicensesAssigned array as
                             #they basically are a more specific subset of the $LogSkuLicensesChanged array. Anyone who
                             #had his license changed, had his options changed.
                             switch ($SetMsolUserLicenseParams) {
-                                { $_.RemoveLicenses }                                               { $LogSkuSupersededRemoved.Add("<li>$($RemoveSupersededLicenses.InputObject -replace ".*:") - $($LicensedUser.Key)</li>") }
-                                { $_.AddLicenses -and $LicenseOptions.DisabledServicePlans }        { $LogSkuLicensesAssigned.Add("<li>$($LicenseOptions.DisabledServicePlans -join ', ') - $($LicensedUser.Key)</li>"); break }
-                                { $_.AddLicenses -and -not $LicenseOptions.DisabledServicePlans }   { $LogSkuLicensesAssigned.Add("<li>No disabled options - $($LicensedUser.Key)</li>"); break }
-                                { $_.LicenseOptions -and $LicenseOptions.DisabledServicePlans }     { $LogSkuLicensesChanged.Add("<li>$($LicenseOptions.DisabledServicePlans -join ', ') - $($LicensedUser.Key)</li>") }
-                                { $_.LicenseOptions -and -not$LicenseOptions.DisabledServicePlans } { $LogSkuLicensesChanged.Add("<li>No disabled options - $($LicensedUser.Key)</li>") }
+                                { $_.RemoveLicenses }                                                { $LogSkuSupersededRemoved.Add("<li>$($RemoveSupersededLicenses.InputObject -replace ".*:") - $($LicensedUser.Key)</li>") }
+                                { $_.AddLicenses -and $LicenseOptions.DisabledServicePlans }         { $LogSkuLicensesAssigned.Add("<li>$($LicenseOptions.DisabledServicePlans -join ', ') - $($LicensedUser.Key)</li>"); break }
+                                { $_.AddLicenses -and -not $LicenseOptions.DisabledServicePlans }    { $LogSkuLicensesAssigned.Add("<li>No disabled options - $($LicensedUser.Key)</li>"); break }
+                                { $_.LicenseOptions -and $LicenseOptions.DisabledServicePlans }      { $LogSkuLicensesChanged.Add("<li>$($LicenseOptions.DisabledServicePlans -join ', ') - $($LicensedUser.Key)</li>") }
+                                { $_.LicenseOptions -and -not $LicenseOptions.DisabledServicePlans } { $LogSkuLicensesChanged.Add("<li>No disabled options - $($LicensedUser.Key)</li>") }
                             }
                         }
                         catch {
@@ -276,11 +276,11 @@
             #region Log performed activities
                 #Add the individual current SKU logs to the general logs created at the start of the script as HTML
                 #paragraphs.
-                if ($LogSkuLicensesAssigned)    { $LogLicensesAssigned.Add("<p><h4>Assigned $($AccountSkuID -replace ".*:") to the following users:</h4><ul>$($LogSkuLicensesAssigned)</ul></p>") }
-                if ($LogSkuLicensesChanged)     { $LogLicensesChanged.Add("<p><h4>Changed $($AccountSkuID -replace ".*:") options for the following users:</h4><ul>$($LogSkuLicensesChanged)</ul></p>") }
-                if ($LogSkuLicensesRemoved)     { $LogLicensesRemoved.Add("<p><h4>Removed $($AccountSkuID -replace ".*:") from the following users:</h4><ul>$($LogSkuLicensesRemoved)</ul></p>") }
-                if ($LogSkuSupersededAssigned)  { $LogSupersededAssigned.Add("<p><h4>License $($AccountSkuID -replace ".*:") is assigned but superseded for the following users. Please check:</h4><ul>$($LogSkuSupersededAssigned)</ul></p>") }
-                if ($LogSkuSupersededRemoved)   { $LogSupersededRemoved.Add("<p><h4>Due to supersedence by $($AccountSkuID -replace ".*:"), the following users had licenses removed:</h4><ul>$($LogSkuSupersededRemoved)</ul></p>") }
+                if ($LogSkuLicensesAssigned)    { $LogLicensesAssigned.Add("<p><h4>Assigned $($AccountSkuID -replace ".*:") with disabled options to user(s):</h4><ul>$($LogSkuLicensesAssigned)</ul></p>") }
+                if ($LogSkuLicensesChanged)     { $LogLicensesChanged.Add("<p><h4>Changed $($AccountSkuID -replace ".*:") disabled options for user(s):</h4><ul>$($LogSkuLicensesChanged)</ul></p>") }
+                if ($LogSkuLicensesRemoved)     { $LogLicensesRemoved.Add("<p><h4>Removed $($AccountSkuID -replace ".*:") from user(s):</h4><ul>$($LogSkuLicensesRemoved)</ul></p>") }
+                if ($LogSkuSupersededAssigned)  { $LogSupersededAssigned.Add("<p><h4>License $($AccountSkuID -replace ".*:") is assigned but superseded for user(s):</h4><ul>$($LogSkuSupersededAssigned)</ul></p>") }
+                if ($LogSkuSupersededRemoved)   { $LogSupersededRemoved.Add("<p><h4>Due to supersedence by $($AccountSkuID -replace ".*:"), user(s) had licenses removed:</h4><ul>$($LogSkuSupersededRemoved)</ul></p>") }
             #endregion
         }
 
