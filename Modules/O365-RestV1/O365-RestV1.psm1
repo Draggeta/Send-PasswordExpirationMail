@@ -133,28 +133,16 @@
         ElseIf ($UserPrincipalName) {
             $User = $UserPrincipalName.Address
         }
-        $Uri = "https://outlook.office365.com/api/v1.0/users('$User')/events"
+        $Uri = "https://outlook.office365.com/api/beta/users('$User')/events"
         $ContentType = "application/json"
         $Headers = @{
             accept = 'application/json';
             odata = 'verbose'
         }
+        $TimeFormat = "yyyy-MM-ddTHH:mm:ss"
     }
     PROCESS {
-        $StartTimeZoneObject = [System.TimeZoneInfo]::FindSystemTimeZoneById($StartTimeZone)
-        $StartUTCOffsetObject = $StartTimeZoneObject.GetUtcOffset($StartDate)
-        $StartUTCOffsetString = "{0:hh}:{0:mm}" -f ($StartUTCOffsetObject)
-        Switch ($StartUTCOffsetObject.TotalMinutes) {
-            { $_ -lt 0 } { $StartFormat = "yyyy-MM-ddTHH:mm:ss.fffffff-$StartUTCOffsetString" }
-            { $_ -ge 0 } { $StartFormat = "yyyy-MM-ddTHH:mm:ss.fffffff+$StartUTCOffsetString" }
-        }
-        $EndTimeZoneObject = [System.TimeZoneInfo]::FindSystemTimeZoneById($EndTimeZone)
-        $EndUTCOffsetObject = $EndTimeZoneObject.GetUtcOffset($EndDate)
-        $EndUTCOffsetString = "{0:hh}:{0:mm}" -f ($EndUTCOffsetObject)
-        Switch ($EndUTCOffsetObject.TotalMinutes) {
-            { $_ -lt 0 } { $EndFormat = "yyyy-MM-ddTHH:mm:ss.fffffff-$EndUTCOffsetString" }
-            { $_ -ge 0 } { $EndFormat = "yyyy-MM-ddTHH:mm:ss.fffffff+$EndUTCOffsetString" }
-        }
+
         Switch ($AsHTML) {
             $False { $NoteContentType = 'Text' }
             $True { $NoteContentType = 'HTML' }
@@ -162,16 +150,16 @@
         }
         Switch ($AllDay) {
             $False { 
-                $Start = Get-Date $StartDate -Format $StartFormat
-                $End = Get-Date $EndDate -Format $EndFormat
+                $Start = Get-Date $StartDate -Format $TimeFormat
+                $End = Get-Date $EndDate -Format $TimeFormat
             }
             $True {
-                $Start = Get-Date $StartDate.Date -Format $StartFormat
-                $End = Get-Date $EndDate.Date -Format $EndFormat
+                $Start = Get-Date $StartDate.Date -Format $TimeFormat
+                $End = Get-Date $EndDate.Date -Format $TimeFormat
             }
             Default {
-                $Start = Get-Date $StartDate -Format $StartFormat
-                $End = Get-Date $EndDate -Format $EndFormat
+                $Start = Get-Date $StartDate -Format $TimeFormat
+                $End = Get-Date $EndDate -Format $TimeFormat
             }
         }
         $BodyContent = If ($Note) {
@@ -192,11 +180,16 @@
         $Body = @{
             Subject = $Subject
             Body = $BodyContent
-            Start = $Start
-            StartTimeZone = $StartTimeZone
-            End = $End
-            EndTimeZone = $EndTimeZone
-            Reminder = $Reminder
+            Start = @{
+                DateTime = $Start
+                TimeZone = "W. Europe Standard Time"
+            }
+            End = @{
+                DateTime = $End
+                TimeZone = "W. Europe Standard Time"
+            }
+            ReminderMinutesBeforeStart = $Reminder
+            IsReminderOn = ($Reminder -ne '0')
             Attendees = @(
                 $AttendeesProperties
             )
@@ -208,7 +201,6 @@
             ShowAs = $ShowAs
             IsAllDay = $AllDay.IsPresent
         }
-        Write-Verbose (ConvertTo-Json $Body)
         If ($PSCmdlet.ShouldProcess("$Subject with a start time of $Start", "create an appointment")) { 
             Invoke-RestMethod -Uri $Uri -Credential $Credential -Method Post -ContentType $ContentType -Headers $Headers -Body (ConvertTo-Json $Body -Depth 10)
         }
@@ -271,6 +263,146 @@ Function New-O365RestAttendee {
                 $Object = New-Object -TypeName PSObject -Property $Properties
                 Write-Output $Object
             }
+        }
+    }
+    END {
+    }
+}
+
+Function Get-O365RestCalendarItem {
+    <#
+        .SYNOPSIS
+            Creates a calendar item via the Office 365 REST API.
+        .DESCRIPTION
+            This function allows a user or admin to create an event or meeting in his calendar or another user's calendar. 
+        .PARAMETER Subject
+            Specifies the subject of the meeting or event. This can be any string.
+        .PARAMETER Note
+            Specifies the text in the body of the meeting or event. This can be any string and in plain-text or as HTML. If HTML is used, use the -AsHtml switch to correctly specify the text type.
+        .PARAMETER AsHtml
+            Specifies if the Note parameter text is formatted as HTML or not. Defaults to false. 
+        .PARAMETER Attendees
+            Specifies the attendees for this meeting. While the objects containing the attendees can be created manually, it is easier to use the New-O365RestAttendee to create them. The cmdlet can be used as follows:
+        .PARAMETER Location
+            Specifies the display name of the location the meeting is planned. If the meeting is planned in a room resource, the display name of the room can be specified here. However, this will only fill in the location field while not booking the room. To book a room, add the it as an attendee of the type 'Resource'.
+        .PARAMETER StartDate
+            Specifies the start date and time of the event or meeting. This can be specified with the Get-Date cmdlet, but also typed naturally such as '2016-05-24 13:15:00'.
+        .PARAMETER StartTimeZone
+            Specifies the time zone of the StartDate parameter. By default this will use the computer's current timezone. A list of available time zones can be found by using the .NET command '[System.TimeZoneInfo]::GetSystemTimeZones()'.
+        .PARAMETER EndDate
+            Specify the end date and time of the event or meeting. This can be specified with the Get-Date cmdlet, but also typed naturally such as '2016-05-24 14:15:00'.
+        .PARAMETER EndTimeZone
+            Specifies the time zone of the EndDate parameter. By default this will use the computer's current timezone. A list of available time zones can be found by using the .NET command '[System.TimeZoneInfo]::GetSystemTimeZones()'.
+        .PARAMETER Reminder
+            Specifies when a reminder should be displayed. This value is an integer and specifies the amount of minutes.
+        .PARAMETER AllDay
+            Specifies if a meeting or event will take place all day. If specified, normally the time of the start and end date need to be '00:00:00', otherwise the command fails. However, this script accounts for that and sets the time to '00:00:00' if this switch has been specified.
+        .PARAMETER ShowAs
+            Specifies if the meeting or event should show the user as free, busy, working elswhere, tentative or away.
+        .PARAMETER UserPrincipalName
+            Specifies the user's calendar the meeting is to be created in. This parameter defaults to the user whose credentials are specified in the credential paramter. It should follow the same pattern as an email address or any normal UPN. 
+            
+            The correct permissions to create events/meetings in the specified user's calendar is required.
+        .PARAMETER Credential
+            Specifies the user account credentials to use to perform this task. 
+            
+            To specify this parameter, you can type a user name, such as 'User1@contoso.com' or you can specify a PSCredential object. If you specify a user name for this parameter, the cmdlet prompts for a password.
+            
+            You can also create a PSCredential object by using a script or by using the Get-Credential cmdlet. You can then set the Credential parameter to the PSCredential object The following example shows how to create credentials.
+            
+            $AdminCredentials = Get-Credential "User01@contoso.com"
+            
+            The following shows how to set the Credential parameter to these credentials.
+            
+            -Credential $AdminCredentials
+            
+            If the acting credentials do not have the correct permission to perform the task, PowerShell returns a terminating error.
+        .EXAMPLE
+            New-O365RestCalendarItem -Subject 'Testing the API.' -Note 'Testing the API is a great success!' -StartDate (Get-Date) -EndDate (Get-Date).AddHours(1) -Credential $Credential -ShowAs 'Free' -AsHTML 
+            Description
+            
+            -----------
+        
+            This command creates a meeting in the logged in user's default calendar with the specified subject and notes, while showing the user as free.
+        .EXAMPLE
+            $Attendees = New-O365RestAttendee -EmailAddress Mark@domain.com,Sally@contoso.com -Type Required
+
+            The following shows how to set the Attendees parameter to these attendees.
+
+            New-O365RestCalendarItem -Subject 'Testing the API.' -Note 'Testing the API is a great success!' -Attendees $Attendees -StartDate (Get-Date)  -Credential $Credential -AllDay 
+            Description
+            
+            -----------
+        
+            This command creates a meeting in the logged in user's default calendar with the specified subject and notes, and the specified attendees.
+        .INPUTS
+        	None. You cannot pipe objects to New-O365RestCalendarItem.
+        .OUTPUTS
+        	New-O365RestCalendarItem outputs the response from the server.
+            Author:   Tony Fortes Ramos
+            Created:  May 15, 2016
+        .LINK
+        	New-O365RestAttendee
+        .COMPONENT
+            New-O365RestAttendee            
+    #>
+    [CmdletBinding(
+        SupportsShouldProcess = $True,
+        ConfirmImpact= 'Medium'
+    )]
+    Param(        
+        [Parameter()]
+        [MailAddress]$UserPrincipalName,
+
+        [Parameter()]
+        [DateTime]$StartDate,
+
+        [Parameter()]
+        [DateTime]$EndDate,
+
+        [Parameter()]
+        [ValidateScript({ [System.TimeZoneInfo]::FindSystemTimeZoneById($_) })]
+        [String]$TimeZone = [System.Timezone]::CurrentTimeZone.StandardName,
+
+        [Parameter(Mandatory = $True)]
+        [PSCredential]
+        [System.Management.Automation.Credential()]$Credential = (Get-Credential)
+    )
+    BEGIN {
+        If (-not $UserPrincipalName) {
+            $User = $Credential.UserName
+        }
+        ElseIf ($UserPrincipalName) {
+            $User = $UserPrincipalName.Address
+        }
+        $Uri = "https://outlook.office365.com/api/beta/users('$User')/events"
+        $ContentType = "application/json"
+        $Headers = @{
+            accept = 'application/json'
+            odata = 'verbose'
+            Prefer = "outlook.timezone = `"$TimeZone`""
+        }
+        $TimeFormat = "yyyy-MM-ddTHH:mm:ss"
+    }
+    PROCESS {
+        if ($StartDate -or $EndDate) {
+            if ($StartDate -and $EndDate) {
+                $StartString = Get-Date $StartDate -Format $TimeFormat
+                $EndString = Get-Date $EndDate -Format $TimeFormat
+                $Filter = "Start/DateTime ge '$StartString'&End/DateTime le '$EndString'"          
+            }
+            ElseIf ($StartDate) {
+                $StartString = Get-Date $StartDate -Format $TimeFormat
+                $Filter = "Start/DateTime ge '$StartString'"
+            }
+            ElseIf ($EndDate) {
+                $EndString = Get-Date $EndDate -Format $TimeFormat
+                $Filter = "End/DateTime le '$EndString'"
+            }
+            $Uri = "$Uri`?`$filter=$Filter"
+        }
+        If ($PSCmdlet.ShouldProcess("$Subject with a start time of $Start", "create an appointment")) { 
+            Invoke-RestMethod -Uri $Uri -Credential $Credential -Method Get -ContentType $ContentType -Headers $Headers
         }
     }
     END {
