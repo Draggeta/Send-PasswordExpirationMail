@@ -1,4 +1,6 @@
-﻿Function New-O365RestCalendarItem {
+﻿$Script:baseUri = "https://outlook.office365.com/api/beta"
+
+Function New-O365RestCalendarItem {
     <#
         .SYNOPSIS
             Creates a calendar item via the Office 365 REST API.
@@ -127,22 +129,20 @@
         [System.Management.Automation.Credential()]$Credential = (Get-Credential)
     )
     BEGIN {
-        If (-not $UserPrincipalName) {
-            $User = $Credential.UserName
-        }
-        ElseIf ($UserPrincipalName) {
-            $User = $UserPrincipalName.Address
-        }
-        $Uri = "https://outlook.office365.com/api/beta/users('$User')/events"
+
         $ContentType = "application/json"
         $Headers = @{
-            accept = 'application/json';
-            odata = 'verbose'
+            Accept = 'application/json';
+            OData = 'verbose'
         }
         $TimeFormat = "yyyy-MM-ddTHH:mm:ss"
+
     }
     PROCESS {
-
+        Switch ($UserPrincipalName) {
+            { $UserPrincipalName }      { $Uri = "$Script:baseUri/users/$($UserPrincipalName.Address)/events"; break }
+            { -not $UserPrincipalName } { $Uri = "$Script:baseUri/me/events" }
+        }
         Switch ($AsHTML) {
             $False { $NoteContentType = 'Text' }
             $True { $NoteContentType = 'HTML' }
@@ -253,6 +253,7 @@ Function New-O365RestAttendee {
     BEGIN {
     }
     PROCESS {
+
         ForEach ($Address in $EmailAddress){
             $Properties = @{
                 Name = $Address.Address
@@ -264,6 +265,7 @@ Function New-O365RestAttendee {
                 Write-Output $Object
             }
         }
+
     }
     END {
     }
@@ -369,41 +371,40 @@ Function Get-O365RestCalendarItem {
         [System.Management.Automation.Credential()]$Credential = (Get-Credential)
     )
     BEGIN {
-        If (-not $UserPrincipalName) {
-            $User = $Credential.UserName
-        }
-        ElseIf ($UserPrincipalName) {
-            $User = $UserPrincipalName.Address
-        }
-        $Uri = "https://outlook.office365.com/api/beta/users('$User')/events"
+
         $ContentType = "application/json"
         $Headers = @{
-            accept = 'application/json'
-            odata = 'verbose'
+            Accept = 'application/json'
+            OData = 'verbose'
             Prefer = "outlook.timezone = `"$TimeZone`""
         }
         $TimeFormat = "yyyy-MM-ddTHH:mm:ss"
+
     }
     PROCESS {
-        if ($StartDate -or $EndDate) {
-            if ($StartDate -and $EndDate) {
-                $StartString = Get-Date $StartDate -Format $TimeFormat
-                $EndString = Get-Date $EndDate -Format $TimeFormat
-                $Filter = "Start/DateTime ge '$StartString'&End/DateTime le '$EndString'"          
-            }
-            ElseIf ($StartDate) {
-                $StartString = Get-Date $StartDate -Format $TimeFormat
-                $Filter = "Start/DateTime ge '$StartString'"
-            }
-            ElseIf ($EndDate) {
-                $EndString = Get-Date $EndDate -Format $TimeFormat
-                $Filter = "End/DateTime le '$EndString'"
-            }
-            $Uri = "$Uri`?`$filter=$Filter"
+
+        Switch ($UserPrincipalName) {
+            { $UserPrincipalName }      { $Uri = "$Script:baseUri/users/$($UserPrincipalName.Address)/events"; break }
+            { -not $UserPrincipalName } { $Uri = "$Script:baseUri/me/events" }
         }
-        If ($PSCmdlet.ShouldProcess("$Subject with a start time of $Start", "create an appointment")) { 
-            Invoke-RestMethod -Uri $Uri -Credential $Credential -Method Get -ContentType $ContentType -Headers $Headers
+        $filter = @()
+        switch ($Uri) {
+            { $StartDate } {
+                $StartString = Get-Date $StartDate -Format $TimeFormat 
+                $filter += "Start/DateTime ge '$StartString'" 
+            }
+            { $EndDate }   {
+                $EndString = Get-Date $EndDate -Format $TimeFormat
+                $filter += "End/DateTime le '$EndString'" 
+            }
         }
+        If ($filter) {
+            $Uri = "$Uri`?`$filter=$($filter -join '&')"
+        }
+        If ($PSCmdlet.ShouldProcess("Find all events in this user's default calendar")) { 
+            Invoke-RestMethod -Uri $Uri -Method Get -ContentType $ContentType -Headers $Headers -Credential $Credential
+        }
+
     }
     END {
     }
