@@ -59,7 +59,7 @@ function OAuth2OpenWindow {
 }
 
 
-function Get-OAuth2AzureAuthorizationCode {
+function Get-OAuth2AzureAuthorization {
     <#
         .SYNOPSIS
             Retrieves an Azure authorization code.
@@ -68,31 +68,33 @@ function Get-OAuth2AzureAuthorizationCode {
         .PARAMETER ClientId
             The client/application ID that identifies this application.
         .PARAMETER TenantId
-            The tenant ID that identifies your organization. Can be a GUID or one of your verified domain names.
+            The tenant ID that identifies your organization. Can be 'common' or your 'tenant ID'. If version 2.0 of the API is used, 'consumer' and 'organization' can be specified as well.
         .PARAMETER RedirectUri
-            The URI to where you should be redirected after authenticating. Native Apps should use 'urn:ietf:wg:oauth:2.0:oob' as their Redirect URI.
-        .PARAMETER ResourceUri
-            The URI of the resource you're trying to access.
+            The URI to where you should be redirected after authenticating. Native apps should use 'urn:ietf:wg:oauth:2.0:oob' as their Redirect URI in version 1.0. In version 2.0 'https://login.microsoftonline.com/common/oauth2/nativeclient' should be specified for native apps.
         .PARAMETER Scope
-            An array of the permissions you require from this application. Necessary for the V2.0 API. 
-        .PARAMETER AdminConsent
-            Specifies if administrative consent is necessary to run this application.
+            An array of the permissions you require from this application. Required when using the v2.0 API.
+        .PARAMETER Prompt
+            Specifies what type of login is needed.None specifies single sign-on. Login specifies that credentials must be entered and SSO is negated. Consent specifies that the user must give consent. Not available with the v2.0 authentication API, Admin_Consent specifies that an admin automatically approves the application for all users.
+        .PARAMETER ApiV2
+            Enables the use of version 2.0 of the authentication API. Version 2.0 apps can be registered at https://apps.dev.microsoft.com/.
         .EXAMPLE
             Get-OAuth2AzureAuthorizationCode -ClientId $appId
-            
-            -----------
         
-            Opens a browser window to login.microsoftonline.com so you can log in and retrieve an authorization code.
+            Code         : O2tTBPNzSgjnjaZWCoBial92z4c6QpoOzM-M8qy16_IGif6NQz-TGF_Z3AenDL1fffUB5JyBHpB0mKylnDIdikaibRIuiWfUdH...
+            SessionState : fed8744b-c5cf-4935-b836-142756485e48
+            State        : 031d3567-25c3-123f-a4d4-8a7e7fb2343e
+
+            Opens a browser window to login.microsoftonline.com and retrieve an authorization code.
         .INPUTS
         	This command does not accept pipeline input.
         .OUTPUTS
         	This command outputs the returned authorization code.
         .LINK
-        	Get-OAuth2AzureAccessToken
+        	Get-OAuth2AzureToken
         .COMPONENT
             OAuth2OpenWindow 
     #>
-    [CmdletBinding()]
+    [CmdletBinding(DefaultParameterSetName = 'None')]
     param(
         [Parameter(Mandatory = $true)]
         [string]$ClientId,
@@ -101,16 +103,17 @@ function Get-OAuth2AzureAuthorizationCode {
         [string]$TenantId = 'common',
 
         [Parameter()]
-        $RedirectUri = 'urn:ietf:wg:oauth:2.0:oob',
-
-        [Parameter()]
-        [string[]]$ResourceUri,
+        [string]$RedirectUri = 'urn:ietf:wg:oauth:2.0:oob',
 
         [Parameter()]
         [string]$Scope,
 
         [Parameter()]
-        [switch]$AdminConsent
+        [ValidateSet('Login','Consent','Admin_Consent','None')]
+        [string]$Prompt = 'None',
+
+        [Parameter(ParameterSetName = 'ApiV2', Mandatory = $true)]
+        [switch]$ApiV2
     )
 
     begin {
@@ -121,38 +124,44 @@ function Get-OAuth2AzureAuthorizationCode {
         Add-Type -AssemblyName System.Web
         
         #UrlEncode the redirect URI, resource and scope for special characters 
-        $redirectUriEncoded =  [System.Web.HttpUtility]::UrlEncode($redirectUri)
-        $resourceEncoded = [System.Web.HttpUtility]::UrlEncode($resourceUri)
+        $state = New-Guid
         $scopeEncoded = [System.Web.HttpUtility]::UrlEncode($Scope)
-
-        $url = "$Script:authenticationUrl/$TenantId/oauth2/authorize?response_type=code&prompt=login"
-        switch ($url) {
-            { $RedirectUri -eq 'urn:ietf:wg:oauth:2.0:oob' }    { $url += "&redirect_uri=$RedirectUri" }
-            { $RedirectUri -ne 'urn:ietf:wg:oauth:2.0:oob' }    { $url += "&redirect_uri=$redirectUriEncoded" }
-            { $ClientId }       { $url += "&client_id=$ClientId" }
-            { $ResourceUri }    { $url += "&resource=$resourceEncoded" }
-            { $AdminConsent }   { $url += "&prompt=admin_consent" }
-            { $Scope }          { $url += "&scope=$scopeEncoded" }
+        switch ($RedirectUri) {
+            'urn:ietf:wg:oauth:2.0:oob' { $redirectUriEncoded = 'urn:ietf:wg:oauth:2.0:oob' }
+            Default                     { $redirectUriEncoded =  [System.Web.HttpUtility]::UrlEncode($RedirectUri) }
+        }
+        switch ($ApiV2.IsPresent) {
+            $false { $url = "$Script:authenticationUrl/$TenantId/oauth2/authorize?response_type=code&client_id=$ClientId&redirect_uri=$redirectUriEncoded&state=$state&prompt=$($Prompt.ToLower())" }
+            $true  { $url = "$Script:authenticationUrl/$TenantId/oauth2/v2.0/authorize?response_type=code&client_id=$ClientId&redirect_uri=$redirectUriEncoded&state=$state&prompt=$($Prompt.ToLower())&response_mode=query" }
+        }
+        if ($Scope) {
+            $url += "&scope=$scopeEncoded" 
         }
         #Open a window to the specific url and authenticate with your credentials.
         $query = OAuth2OpenWindow -Url $url
         #Parse the query so the code and session state can be found.
-        $queryOutput = [System.Web.HttpUtility]::ParseQueryString($query.Url.Query)
-        $output = @{}
-        foreach($key in $queryOutput.Keys){
-            $output["$key"] = $queryOutput[$key]
+        $output = [System.Web.HttpUtility]::ParseQueryString($query.Url.Query)
+        $properties = @{
+            Code = $output['code']
+            SessionState = $output['session_state']
+            State = $output['state']
         }
-        #Combine the code and session state to form the authorization code.
-        $authorizationCode = "$($output.code)&session_state=$($output.session_state)"
+        $object = New-Object -TypeName PSObject -Property $properties
     }
     
     end {
-        return $authorizationCode
+        if ($object.State -eq $state) {
+            return $object
+        }
+        else {
+            Write-Warning "The returned state '$($object.State)' isn't equal to generated state '$state'. Reply cannot be trusted."
+            break
+        }
     }
 }
 
 
-function Get-OAuth2AzureAccessToken {
+function Get-OAuth2AzureToken {
     <#
         .SYNOPSIS
             Retrieves an access token.
@@ -161,49 +170,62 @@ function Get-OAuth2AzureAccessToken {
         .PARAMETER ClientId
             The client/application ID that identifies this application.
         .PARAMETER ClientSecret
-            The secret key used to authenticate your application.
+            The secret key used to authenticate your application. In version 2.0 of the API it cannot be used for native apps.
         .PARAMETER TenantId
-            The tenant ID that identifies your organization. Can be a GUID or one of your verified domain names.
+            The tenant ID that identifies your organization. Can be 'common' or your 'tenant ID'. If version 2.0 of the API is used, 'consumer' and 'organization' can be specified as well.
         .PARAMETER RedirectUri
-            The URI to where you should be redirected after authenticating. Native Apps should use 'urn:ietf:wg:oauth:2.0:oob' as their Redirect URI.
+            The URI to where you should be redirected after authenticating. Native apps should use 'urn:ietf:wg:oauth:2.0:oob' as their Redirect URI in version 1.0. In version 2.0 'https://login.microsoftonline.com/common/oauth2/nativeclient' should be specified for native apps.
         .PARAMETER ResourceUri
-            The URI of the resource you're trying to access.
+            The URI of the resource you're trying to access. Only required for version 1.0 of the API.
+        .PARAMETER Scope
+            An array of the permissions you require from this application. Can only be the same or a superset of the scope defined in the authorization request.
         .PARAMETER AuthorizationCode
             The authorization code necessary to request an access token.
+        .PARAMETER ApiV2
+            Enables the use of version 2.0 of the authentication API. Version 2.0 apps can be registered at https://apps.dev.microsoft.com/.
         .EXAMPLE
             Get-OAuth2AzureAccessToken -ClientId $appId -ClientSecret $key -ResourceUri https://graph.microsoft.com -AuthorizationCode $authCode
             
-            -----------
-        
+            RefreshToken : JTMjU2IiwieDV0IjoiSTZvQnc0VnpCSE9xbGVHclYyQUpkQTVFbVhjIiwia2lkIjoiSTZvQnc0VnpCSE9xbGVHclYyQUpkQTVF...
+            AccessToken  : eyJ0eXAiOiJKV1QiLCJub25jZSI6IkFRQUJBQUFBQUFEUk5ZUlEzZGhSU3JtLTRLLWFkcENKYUVOeFFJUHlXLVRieUVwWllzSG...
+            IdToken      : uUmVhZCIsInN1YiI6IjByMEJyTl9GOGxRck5aeHJBS0RFNHhTQzFzbWJIRDRvOXU0dkVHTG9Kb00iLCJ0aWQiOiJlZmQzYzc2Y...
+
             Returns an access token for use in API requests.
         .INPUTS
         	This command does not accept pipeline input.
         .OUTPUTS
         	This command outputs the returned access token.
         .LINK
-        	Get-OAuth2AzureAuthorizationCode
+        	Get-OAuth2AzureAuthorization
         .COMPONENT
             OAuth2OpenWindow 
     #>
-    [CmdletBinding()]
+    [CmdletBinding(DefaultParameterSetName = 'ApiV1')]
     param(
         [Parameter(Mandatory = $true)]
         [string]$ClientId,
 
-        [Parameter(Mandatory = $true)]
+        [Parameter(ParameterSetName = 'ApiV2')]
+        [Parameter(ParameterSetName = 'ApiV1', Mandatory = $true)]
         [string]$ClientSecret,
 
         [Parameter()]
         [string]$TenantId = 'common',
 
         [Parameter()]
-        $RedirectUri = 'urn:ietf:wg:oauth:2.0:oob',
+        [string]$RedirectUri = 'urn:ietf:wg:oauth:2.0:oob',
+
+        [Parameter(ParameterSetName = 'ApiV1', Mandatory = $true)]
+        [string]$ResourceUri,
+
+        [Parameter()]
+        [string]$Scope,
 
         [Parameter(Mandatory = $true)]
-        [string[]]$ResourceUri,
+        [string]$AuthorizationCode,
 
-        [Parameter(Mandatory = $true)]
-        [string]$AuthorizationCode
+        [Parameter(ParameterSetName = 'ApiV2', Mandatory = $true)]
+        [switch]$ApiV2
     )
 
     begin {    
@@ -215,10 +237,19 @@ function Get-OAuth2AzureAccessToken {
         
         #UrlEncode the ClientSecret for special characters.
         $clientSecretEncoded = [System.Web.HttpUtility]::UrlEncode($ClientSecret)
+        $scopeEncoded = [System.Web.HttpUtility]::UrlEncode($Scope)
         #prepare the parameters that should be passed to the Invoke-Restmethod cmdlet.
-        $body = "grant_type=authorization_code&redirect_uri=$RedirectUri&client_id=$ClientId&client_secret=$clientSecretEncoded&code=$AuthorizationCode&resource=$ResourceUri"
+        switch ($ApiV2.IsPresent) {
+            $false { $url = "$Script:authenticationUrl/$TenantId/oauth2/token" }
+            $true  { $url = "$Script:authenticationUrl/$TenantId/oauth2/v2.0/token" }
+        }
+        $body = "grant_type=authorization_code&client_id=$ClientId&client_secret=$clientSecretEncoded&redirect_uri=$RedirectUri&code=$AuthorizationCode"
+        switch ($body) {
+            { $ResourceUri } { $body += "&resource=$ResourceUri" }
+            { $Scope }       { $body += "&scope=$scopeEncoded" }
+        }
         $invokeRestMethodParams = @{
-            Uri = "$Script:authenticationUrl/common/oauth2/token"
+            Uri = $url
             Method = 'Post'
             ContentType = 'application/x-www-form-urlencoded'
             Body = $body
@@ -227,10 +258,15 @@ function Get-OAuth2AzureAccessToken {
         #Perform the request
         $authorization = Invoke-RestMethod @invokeRestMethodParams
         #Get the access token
-        $accessToken = $authorization.access_token
+        $properties = @{
+            AccessToken = $authorization.access_token
+            RefreshToken = $authorization.refresh_token
+            IdToken = $authorization.id_token
+        }
+        $object = New-Object -TypeName PSObject -Property $properties
     }
 
     end {
-        return $accessToken
+        return $object
     }
 }
