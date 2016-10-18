@@ -104,7 +104,7 @@ function Get-OAuth2AzureAuthorization {
         .COMPONENT
             OAuth2OpenWindow 
     #>
-    [CmdletBinding(DefaultParameterSetName = 'None')]
+    [CmdletBinding(DefaultParameterSetName = 'ApiV1')]
     param(
         [Parameter(Mandatory = $true)]
         [string]$ClientId,
@@ -116,12 +116,12 @@ function Get-OAuth2AzureAuthorization {
         [string]$RedirectUri = 'urn:ietf:wg:oauth:2.0:oob',
 
         [Parameter(ParameterSetName = 'ApiV2', Mandatory = $true)]
-        [Parameter(ParameterSetName = 'None')]
+        [Parameter(ParameterSetName = 'ApiV1')]
         [string[]]$Scope,
 
         [Parameter()]
         [ValidateSet('Login','Consent','Admin_Consent','None')]
-        [string]$Prompt = 'None',
+        [string]$Prompt = 'Login',
 
         [Parameter(ParameterSetName = 'ApiV2', Mandatory = $true)]
         [switch]$ApiV2
