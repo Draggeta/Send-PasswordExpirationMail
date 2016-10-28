@@ -376,7 +376,7 @@ function New-O365RestV2CalendarItem {
         $body = @{}
         switch ($body) {
             { $Subject }        { $body.Subject = $Subject }
-            { $Note }    { 
+            { $Note }           { 
                                   $body.Body = @{}
                                   $body.Body.Content = $Note
                                   $body.Body.ContentType = $NoteContentType

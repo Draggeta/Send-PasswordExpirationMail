@@ -1,6 +1,6 @@
 ﻿$Script:baseUri = "https://outlook.office365.com/api/beta"
 
-Function New-O365RestCalendarItem {
+function Get-O365RestCalendarItem {
     <#
         .SYNOPSIS
             Creates a calendar item via the Office 365 REST API.
@@ -79,137 +79,79 @@ Function New-O365RestCalendarItem {
     #>
     [CmdletBinding(
         SupportsShouldProcess = $True,
-        ConfirmImpact= 'Medium'
+        ConfirmImpact= 'Low'
     )]
-    Param(
-        [Parameter(Mandatory = $True)]
-        [String]$Subject,
-        
-        [Parameter()]
-        [String]$Note,
-        
-        [Parameter()]
-        [Switch]$AsHtml,
-        
-        [Parameter()]
-        $Attendees,
+    param(
+        [Parameter(ParameterSetName = 'DateFilter')]
+        [string]$EventId,
 
-        [Parameter()]
-        $Location,
+        [Parameter(ParameterSetName = 'DateFilter')]
+        [datetime]$StartDate,
 
-        [Parameter()]
-        [DateTime]$StartDate = (Get-Date),
-        
+        [Parameter(ParameterSetName = 'DateFilter')]
+        [datetime]$EndDate,
+
+        [Parameter(ParameterSetName = 'All')]
+        [switch]$All,
+
         [Parameter()]
         [ValidateScript({ [System.TimeZoneInfo]::FindSystemTimeZoneById($_) })]
-        [String]$StartTimeZone = [System.Timezone]::CurrentTimeZone.StandardName,
-        
-        [Parameter()]
-        [DateTime]$EndDate = (Get-Date).AddMinutes(30),
-        
-        [Parameter()]
-        [ValidateScript({ [System.TimeZoneInfo]::FindSystemTimeZoneById($_) })]
-        [String]$EndTimeZone = [System.Timezone]::CurrentTimeZone.StandardName,
-        
-        [Parameter()]
-        [Int]$Reminder,
+        [string]$TimeZone = [System.Timezone]::CurrentTimeZone.StandardName,
 
         [Parameter()]
-        [Switch]$AllDay,
-        
-        [Parameter()]
-        [ValidateSet('Free','WorkingElsewhere','Tentative','Busy','Away')]
-        [String]$ShowAs = 'Busy',
-        
-        [Parameter()]
-        [MailAddress]$UserPrincipalName,
+        [mailaddress]$UserPrincipalName,
 
         [Parameter(Mandatory = $True)]
         [PSCredential]
         [System.Management.Automation.Credential()]$Credential = (Get-Credential)
     )
-    BEGIN {
 
-        $ContentType = "application/json"
-        $Headers = @{
-            Accept = 'application/json';
+    begin {
+        $contentType = "application/json"
+        $headers = @{
+            Accept = 'application/json'
             OData = 'verbose'
+            Prefer = "outlook.timezone = `"$TimeZone`""
         }
-        $TimeFormat = "yyyy-MM-ddTHH:mm:ss"
-
+        $timeFormat = "yyyy-MM-ddTHH:mm:ss"
     }
-    PROCESS {
-        Switch ($UserPrincipalName) {
-            { $UserPrincipalName }      { $Uri = "$Script:baseUri/users/$($UserPrincipalName.Address)/events"; break }
-            { -not $UserPrincipalName } { $Uri = "$Script:baseUri/me/events" }
+    
+    process {
+        switch ($UserPrincipalName) {
+            { $UserPrincipalName }      { $uri = "$Script:baseUri/users/$($UserPrincipalName.Address)/events" }
+            { -not $UserPrincipalName } { $uri = "$Script:baseUri/me/events" }
+            { $EventId }                { $uri += "/$EventId" }
         }
-        Switch ($AsHTML) {
-            $False { $NoteContentType = 'Text' }
-            $True { $NoteContentType = 'HTML' }
-            Default { $NoteContentType = 'Text' }
+        $filter = @()
+        switch ($filter) {
+            { $StartDate }  {
+                                $startString = Get-Date $StartDate -Format $timeFormat 
+                                $filter += "Start/DateTime ge '$startString'" 
+                            }
+            { $EndDate }    {
+                                $endString = Get-Date $EndDate -Format $timeFormat
+                                $filter += "End/DateTime le '$endString'" 
+                            }
         }
-        Switch ($AllDay) {
-            $False { 
-                $Start = Get-Date $StartDate -Format $TimeFormat
-                $End = Get-Date $EndDate -Format $TimeFormat
-            }
-            $True {
-                $Start = Get-Date $StartDate.Date -Format $TimeFormat
-                $End = Get-Date $EndDate.Date -Format $TimeFormat
-            }
-            Default {
-                $Start = Get-Date $StartDate -Format $TimeFormat
-                $End = Get-Date $EndDate -Format $TimeFormat
-            }
+        if ($filter) {
+            $uri += "?`$filter=$($filter -join '&')"
+            $uri += "&`$top=499"
         }
-        $BodyContent = If ($Note) {
-            @{
-                ContentType = $NoteContentType
-                Content = $Note
-            }
+        else {
+            $uri += "?`$top=499"
         }
-        $AttendeesProperties = Foreach ($Attendee in $Attendees) {
-            @{
-                EmailAddress = @{
-                    Address = $Attendee.EmailAddress
-                    Name = $Attendee.Name
-                }
-                Type = $Attendee.Type
-            }
-        }
-        $Body = @{
-            Subject = $Subject
-            Body = $BodyContent
-            Start = @{
-                DateTime = $Start
-                TimeZone = "W. Europe Standard Time"
-            }
-            End = @{
-                DateTime = $End
-                TimeZone = "W. Europe Standard Time"
-            }
-            ReminderMinutesBeforeStart = $Reminder
-            IsReminderOn = ($Reminder -ne '0')
-            Attendees = @(
-                $AttendeesProperties
-            )
-            Location = @{
-                DisplayName = $Location
-                Address = $null
-                Coordinates = $null
-            }
-            ShowAs = $ShowAs
-            IsAllDay = $AllDay.IsPresent
-        }
-        If ($PSCmdlet.ShouldProcess("$Subject with a start time of $Start", "create an appointment")) { 
-            Invoke-RestMethod -Uri $Uri -Credential $Credential -Method Post -ContentType $ContentType -Headers $Headers -Body (ConvertTo-Json $Body -Depth 10)
+        
+        if ($PSCmdlet.ShouldProcess($UserPrincipalName)) { 
+            Invoke-RestMethod -Uri $uri -Credential $Credential -Method Get -ContentType $contentType -Headers $headers
         }
     }
-    END {
+    
+    end {
     }
 }
 
-Function New-O365RestAttendee {
+
+function New-O365RestAttendee {
     <#
         .SYNOPSIS
             Create an Attendee object.
@@ -271,7 +213,8 @@ Function New-O365RestAttendee {
     }
 }
 
-Function Get-O365RestCalendarItem {
+
+function New-O365RestCalendarItem {
     <#
         .SYNOPSIS
             Creates a calendar item via the Office 365 REST API.
@@ -352,60 +295,304 @@ Function Get-O365RestCalendarItem {
         SupportsShouldProcess = $True,
         ConfirmImpact= 'Medium'
     )]
-    Param(        
+    param(
+        [Parameter(Mandatory = $True)]
+        [String]$Subject,
+        
         [Parameter()]
-        [MailAddress]$UserPrincipalName,
+        [String]$Note,
+        
+        [Parameter()]
+        [Switch]$AsHtml,
+        
+        [Parameter()]
+        $Attendees,
 
         [Parameter()]
-        [DateTime]$StartDate,
+        $Location,
 
         [Parameter()]
-        [DateTime]$EndDate,
-
+        [DateTime]$StartDate = (Get-Date),
+        
         [Parameter()]
         [ValidateScript({ [System.TimeZoneInfo]::FindSystemTimeZoneById($_) })]
-        [String]$TimeZone = [System.Timezone]::CurrentTimeZone.StandardName,
+        [String]$StartTimeZone = [System.Timezone]::CurrentTimeZone.StandardName,
+        
+        [Parameter()]
+        [DateTime]$EndDate = (Get-Date).AddMinutes(30),
+        
+        [Parameter()]
+        [ValidateScript({ [System.TimeZoneInfo]::FindSystemTimeZoneById($_) })]
+        [String]$EndTimeZone = [System.Timezone]::CurrentTimeZone.StandardName,
+        
+        [Parameter()]
+        [Int]$Reminder,
+
+        [Parameter()]
+        [Switch]$AllDay,
+        
+        [Parameter()]
+        [ValidateSet('Free','WorkingElsewhere','Tentative','Busy','Away')]
+        [String]$ShowAs = 'Busy',
+        
+        [Parameter()]
+        [MailAddress]$UserPrincipalName,
 
         [Parameter(Mandatory = $True)]
         [PSCredential]
         [System.Management.Automation.Credential()]$Credential = (Get-Credential)
     )
-    BEGIN {
+    begin {
 
         $ContentType = "application/json"
         $Headers = @{
-            Accept = 'application/json'
+            Accept = 'application/json';
             OData = 'verbose'
-            Prefer = "outlook.timezone = `"$TimeZone`""
         }
         $TimeFormat = "yyyy-MM-ddTHH:mm:ss"
 
     }
-    PROCESS {
-
-        Switch ($UserPrincipalName) {
+    process {
+        switch ($UserPrincipalName) {
             { $UserPrincipalName }      { $Uri = "$Script:baseUri/users/$($UserPrincipalName.Address)/events"; break }
             { -not $UserPrincipalName } { $Uri = "$Script:baseUri/me/events" }
         }
-        $filter = @()
-        switch ($Uri) {
-            { $StartDate } {
-                $StartString = Get-Date $StartDate -Format $TimeFormat 
-                $filter += "Start/DateTime ge '$StartString'" 
+        switch ($AsHTML) {
+            $False { $NoteContentType = 'Text' }
+            $True { $NoteContentType = 'HTML' }
+        }
+        switch ($AllDay.IsPresent) {
+            { $StartDate -and ($_ -eq $False) } { $start = Get-Date $StartDate -Format $timeFormat }
+            { $EndDate -and ($_ -eq $False) }   { $end = Get-Date $EndDate -Format $timeFormat }
+            { $StartDate -and ($_ -eq $True) }  { $start = Get-Date $StartDate.Date -Format $timeFormat }
+            { $EndDate -and ($_ -eq $True) }    { $end = Get-Date $EndDate.Date -Format $timeFormat }
+        }
+        $attendeesProperties = foreach ($Attendee in $Attendees) {
+            @{
+                EmailAddress = @{
+                    Address = $Attendee.EmailAddress
+                    Name = $Attendee.Name
+                }
+                Type = $Attendee.Type
             }
-            { $EndDate }   {
-                $EndString = Get-Date $EndDate -Format $TimeFormat
-                $filter += "End/DateTime le '$EndString'" 
-            }
         }
-        If ($filter) {
-            $Uri = "$Uri`?`$filter=$($filter -join '&')"
+        $body = @{}
+        switch ($body) {
+            { $Subject }        { $body.Subject = $Subject }
+            { $Note }           { 
+                                  $body.Body = @{}
+                                  $body.Body.Content = $Note
+                                  $body.Body.ContentType = $NoteContentType
+                                }
+            { $start }          { 
+                                  $body.Start = @{}
+                                  $body.Start.DateTime = $start
+                                  $body.Start.TimeZone = $StartTimeZone 
+                                }
+            { $end }            { 
+                                  $body.End = @{}
+                                  $body.End.DateTime = $end
+                                  $body.End.TimeZone = $EndTimeZone
+                                }
+            { $Reminder } { 
+                                  $body.ReminderMinutesBeforeStart = $Reminder
+                                  $body.IsReminderOn = ($Reminder -ne 0)
+                                }
+            { $Attendees }      { $body.Attendees = $attendeesProperties }
+            { $Location }       { 
+                                  $body.Location = @{}
+                                  $body.Location.DisplayName = $Location
+                                  $body.Location.Address = $null
+                                  $body.Location.Coordinates = $null
+                                }
+            { $ShowAs }         { $body.ShowAs = $ShowAs }
+            { $AllDay }         { $body.IsAllDay = $AllDay.IsPresent }
         }
-        If ($PSCmdlet.ShouldProcess("Find all events in this user's default calendar")) { 
-            Invoke-RestMethod -Uri $Uri -Method Get -ContentType $ContentType -Headers $Headers -Credential $Credential
+        If ($PSCmdlet.ShouldProcess("$Subject with a start time of $Start", "create an appointment")) { 
+            Invoke-RestMethod -Uri $Uri -Credential $Credential -Method Post -ContentType $ContentType -Headers $Headers -Body (ConvertTo-Json $Body -Depth 10)
         }
-
     }
-    END {
+    end {
+    }
+}
+
+
+function Remove-O365RestCalendarItem {
+    <#
+    #>
+    [CmdletBinding(
+        SupportsShouldProcess = $True,
+        ConfirmImpact= 'High'
+    )]
+    param(
+        [Parameter(Mandatory = $True)]
+        [string]$EventId,
+
+        [Parameter()]
+        [mailaddress]$UserPrincipalName,
+
+        [Parameter(Mandatory = $True)]
+        [PSCredential]
+        [System.Management.Automation.Credential()]$Credential = (Get-Credential),
+
+        [Parameter()]
+        [switch]$Force
+    )
+
+    begin {
+        $contentType = "application/json"
+        $headers = @{
+            Accept = 'application/json'
+            OData = 'verbose'
+        }
+    }
+    
+    process {
+        switch ($UserPrincipalName) {
+            { $UserPrincipalName }      { $uri = "$Script:baseUri/users/$($UserPrincipalName.Address)/events/$EventId" }
+            { -not $UserPrincipalName } { $uri = "$Script:baseUri/me/events/$EventId" }
+        }
+        if ($Force -or $PSCmdlet.ShouldProcess($EventId)) { 
+            Invoke-RestMethod -Uri $uri -Credential $Credential -Method Delete -ContentType $contentType -Headers $headers
+        }
+    }
+    
+    end {
+    }
+}
+
+
+function Set-O365RestCalendarItem {
+    <#
+    #>
+    [CmdletBinding(
+        SupportsShouldProcess = $True,
+        ConfirmImpact= 'Medium'
+    )]
+    param(
+        [Parameter(Mandatory = $True)]
+        [string]$EventId,
+
+        [Parameter()]
+        [string]$Subject,
+        
+        [Parameter()]
+        [string]$Note,
+        
+        [Parameter()]
+        [switch]$AsHtml,
+        
+        [Parameter()]
+        $Attendees,
+
+        [Parameter()]
+        $Location,
+
+        [Parameter()]
+        [datetime]$StartDate,
+        
+        [Parameter()]
+        [ValidateScript({ [System.TimeZoneInfo]::FindSystemTimeZoneById($_) })]
+        [string]$StartTimeZone = [System.Timezone]::CurrentTimeZone.StandardName,
+        
+        [Parameter()]
+        [datetime]$EndDate,
+        
+        [Parameter()]
+        [ValidateScript({ [System.TimeZoneInfo]::FindSystemTimeZoneById($_) })]
+        [string]$EndTimeZone = [System.Timezone]::CurrentTimeZone.StandardName,
+        
+        [Parameter()]
+        [int]$Reminder,
+
+        [Parameter()]
+        [switch]$AllDay,
+        
+        [Parameter()]
+        [ValidateSet('Free','WorkingElsewhere','Tentative','Busy','Away')]
+        [string]$ShowAs,
+        
+        [Parameter()]
+        [mailaddress]$UserPrincipalName,
+
+        [Parameter(Mandatory = $True)]
+        [PSCredential]
+        [System.Management.Automation.Credential()]$Credential = (Get-Credential),
+
+        [Parameter()]
+        [switch]$Force
+    )
+
+    begin {
+        $contentType = "application/json"
+        $headers = @{
+            Accept = 'application/json'
+            OData = 'verbose'
+        }
+        $TimeFormat = "yyyy-MM-ddTHH:mm:ss"
+    }
+    
+    process {
+        switch ($UserPrincipalName) {
+            { $UserPrincipalName }      { $uri = "$Script:baseUri/users/$($UserPrincipalName.Address)/events/$EventId" }
+            { -not $UserPrincipalName } { $uri = "$Script:baseUri/me/events/$EventId" }
+        }
+        switch ($AsHTML) {
+            $False { $NoteContentType = 'Text' }
+            $True  { $NoteContentType = 'HTML' }
+        }
+        switch ($AllDay.IsPresent) {
+            { $StartDate -and ($_ -eq $False) } { $start = Get-Date $StartDate -Format $TimeFormat }
+            { $EndDate -and ($_ -eq $False) }   { $end = Get-Date $EndDate -Format $TimeFormat }
+            { $StartDate -and ($_ -eq $True) }  { $start = Get-Date $StartDate.Date -Format $TimeFormat }
+            { $EndDate -and ($_ -eq $True) }    { $end = Get-Date $EndDate.Date -Format $TimeFormat }
+        }
+        $attendeesProperties = foreach ($Attendee in $Attendees) {
+            @{
+                EmailAddress = @{
+                    Address = $Attendee.EmailAddress
+                    Name = $Attendee.Name
+                }
+                Type = $Attendee.Type
+            }
+        }
+        $body = @{}
+        switch ($body) {
+            { $Subject }        { $body.Subject = $Subject }
+            { $Note }    { 
+                                  $body.Body = @{}
+                                  $body.Body.Content = $Note
+                                  $body.Body.ContentType = $NoteContentType
+                                }
+            { $start }          { 
+                                  $body.Start = @{}
+                                  $body.Start.DateTime = $start
+                                  $body.Start.TimeZone = $StartTimeZone 
+                                }
+            { $end }            { 
+                                  $body.End = @{}
+                                  $body.End.DateTime = $end
+                                  $body.End.TimeZone = $EndTimeZone
+                                }
+            { $Reminder } { 
+                                  $body.ReminderMinutesBeforeStart = $Reminder
+                                  $body.IsReminderOn = ($Reminder -ne 0)
+                                }
+            { $Attendees }      { $body.Attendees = $attendeesProperties }
+            { $Location }       { 
+                                  $body.Location = @{}
+                                  $body.Location.DisplayName = $Location
+                                  $body.Location.Address = $null
+                                  $body.Location.Coordinates = $null
+                                }
+            { $ShowAs }         { $body.ShowAs = $ShowAs }
+            { $AllDay }         { $body.IsAllDay = $AllDay.IsPresent }
+        }
+        if ($Force -or $PSCmdlet.ShouldProcess($EventId)) { 
+            Invoke-RestMethod -Uri $uri -Credential $Credential -Method Patch -ContentType $contentType -Headers $headers -Body (ConvertTo-Json $body -Depth 10)
+        }
+    }
+    
+    end {
     }
 }
