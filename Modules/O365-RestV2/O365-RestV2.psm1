@@ -4,7 +4,7 @@
 function Get-O365RestV2CalendarItem {
     <#
         .SYNOPSIS
-            Creates a calendar item via the Office 365 REST API.
+            Gets calendar events from the main user calendar.
         .DESCRIPTION
             This function allows a user or admin to create an event or meeting in his calendar or another user's calendar. 
         .PARAMETER Subject
@@ -417,6 +417,48 @@ function New-O365RestV2CalendarItem {
 
 function Remove-O365RestV2CalendarItem {
     <#
+        .SYNOPSIS
+            Retrieves an Azure authorization code.
+        .DESCRIPTION
+            This cmdlet retrieves an Azure REST API authorization code by displaying a pop up browser window where you log in. 
+        .PARAMETER ClientId
+            The client/application ID that identifies this application.
+        .PARAMETER TenantId
+            The tenant ID that identifies the organization. Can be 'common' or a specific tenant ID. If version 2.0 of the API is used, 'consumer' and 'organization' can be specified as well. Consumer specifies that only Microsoft Accounts can authenticate. Organization allows only Organizational Accounts to log in.
+        .PARAMETER RedirectUri
+            The URI to where you should be redirected after authenticating. Native apps should use 'urn:ietf:wg:oauth:2.0:oob' as their Redirect URI in version 1.0. In version 2.0 'https://login.microsoftonline.com/common/oauth2/nativeclient' should be specified for native apps, however 'urn:ietf:wg:oauth:2.0:oob' also works.
+        .PARAMETER Scope
+            An array of the permissions you require from this application. Required when using the v2.0 API.
+            In version 1.0 specify the scopes as 'calendars.read' or 'user.readwrite'.
+            When using version 2.0, specify the scopes in the format 'http://graph.microsoft.com/user.readbasic.all' and 'https://outlook.office.com/mail.read'.
+        .PARAMETER Prompt
+            Specifies what type of login is needed.None specifies single sign-on. Login specifies that credentials must be entered and SSO is negated. Consent specifies that the user must give consent. Not available with the v2.0 authentication API, Admin_Consent specifies that an admin automatically approves the application for all users.
+        .PARAMETER ApiV2
+            Enables the use of version 2.0 of the authentication API. Version 2.0 apps can be registered at https://apps.dev.microsoft.com/.
+        .EXAMPLE
+            Get-OAuth2AzureAuthorization -ClientId $appId -TenantId contoso.com
+        
+            Code         : O2tTBPNzSgjnjaZWCoBial92z4c6QpoOzM-M8qy16_IGif6NQz-TGF_Z3AenDL1fffUB5JyBHpB0mKylnDIdikaibRIuiWfUdH...
+            SessionState : fed8744b-c5cf-4935-b836-142756485e48
+            State        : 031d3567-25c3-123f-a4d4-8a7e7fb2343e
+
+            Opens a browser window to login.microsoftonline.com and retrieve an authorization code using version 1.0 of the API.
+        .EXAMPLE
+            Get-OAuth2AzureAuthorization -ClientId $apiv2ClientId -Scope $Scope -Prompt Consent -RedirectUri 'https://login.microsoftonline.com/common/oauth2/nativeclient' -ApiV2
+        
+            Code         : GYkA6Ses3jm62gaJTFrt0tlrPBMMPWBM_BXG2hciutILnTAMGOReRfZZ3OXBNqLDl5tD24dTeMosol9eIVlTXXfAkGekWWgkci...
+            SessionState : 9c4b9ec2-3dd9-4762-939a-e0bf877a4ac4
+            State        : a52c08af-8b94-434e-878e-793f4e66a62b
+
+            Opens a browser window to login.microsoftonline.com and retrieve a version 2.0 authorization code. The aurthorization code grants only the access specified in the scope.
+        .INPUTS
+        	This command does not accept pipeline input.
+        .OUTPUTS
+        	This command outputs the returned authorization code, state and session state.
+        .LINK
+        	Get-OAuth2AzureToken
+        .COMPONENT
+            OAuth2OpenWindow 
     #>
     [CmdletBinding(
         SupportsShouldProcess = $True,
@@ -462,6 +504,48 @@ function Remove-O365RestV2CalendarItem {
 
 function Set-O365RestV2CalendarItem {
     <#
+        .SYNOPSIS
+            Retrieves an Azure authorization code.
+        .DESCRIPTION
+            This cmdlet retrieves an Azure REST API authorization code by displaying a pop up browser window where you log in. 
+        .PARAMETER ClientId
+            The client/application ID that identifies this application.
+        .PARAMETER TenantId
+            The tenant ID that identifies the organization. Can be 'common' or a specific tenant ID. If version 2.0 of the API is used, 'consumer' and 'organization' can be specified as well. Consumer specifies that only Microsoft Accounts can authenticate. Organization allows only Organizational Accounts to log in.
+        .PARAMETER RedirectUri
+            The URI to where you should be redirected after authenticating. Native apps should use 'urn:ietf:wg:oauth:2.0:oob' as their Redirect URI in version 1.0. In version 2.0 'https://login.microsoftonline.com/common/oauth2/nativeclient' should be specified for native apps, however 'urn:ietf:wg:oauth:2.0:oob' also works.
+        .PARAMETER Scope
+            An array of the permissions you require from this application. Required when using the v2.0 API.
+            In version 1.0 specify the scopes as 'calendars.read' or 'user.readwrite'.
+            When using version 2.0, specify the scopes in the format 'http://graph.microsoft.com/user.readbasic.all' and 'https://outlook.office.com/mail.read'.
+        .PARAMETER Prompt
+            Specifies what type of login is needed.None specifies single sign-on. Login specifies that credentials must be entered and SSO is negated. Consent specifies that the user must give consent. Not available with the v2.0 authentication API, Admin_Consent specifies that an admin automatically approves the application for all users.
+        .PARAMETER ApiV2
+            Enables the use of version 2.0 of the authentication API. Version 2.0 apps can be registered at https://apps.dev.microsoft.com/.
+        .EXAMPLE
+            Get-OAuth2AzureAuthorization -ClientId $appId -TenantId contoso.com
+        
+            Code         : O2tTBPNzSgjnjaZWCoBial92z4c6QpoOzM-M8qy16_IGif6NQz-TGF_Z3AenDL1fffUB5JyBHpB0mKylnDIdikaibRIuiWfUdH...
+            SessionState : fed8744b-c5cf-4935-b836-142756485e48
+            State        : 031d3567-25c3-123f-a4d4-8a7e7fb2343e
+
+            Opens a browser window to login.microsoftonline.com and retrieve an authorization code using version 1.0 of the API.
+        .EXAMPLE
+            Get-OAuth2AzureAuthorization -ClientId $apiv2ClientId -Scope $Scope -Prompt Consent -RedirectUri 'https://login.microsoftonline.com/common/oauth2/nativeclient' -ApiV2
+        
+            Code         : GYkA6Ses3jm62gaJTFrt0tlrPBMMPWBM_BXG2hciutILnTAMGOReRfZZ3OXBNqLDl5tD24dTeMosol9eIVlTXXfAkGekWWgkci...
+            SessionState : 9c4b9ec2-3dd9-4762-939a-e0bf877a4ac4
+            State        : a52c08af-8b94-434e-878e-793f4e66a62b
+
+            Opens a browser window to login.microsoftonline.com and retrieve a version 2.0 authorization code. The aurthorization code grants only the access specified in the scope.
+        .INPUTS
+        	This command does not accept pipeline input.
+        .OUTPUTS
+        	This command outputs the returned authorization code, state and session state.
+        .LINK
+        	Get-OAuth2AzureToken
+        .COMPONENT
+            OAuth2OpenWindow 
     #>
     [CmdletBinding(
         SupportsShouldProcess = $True,
