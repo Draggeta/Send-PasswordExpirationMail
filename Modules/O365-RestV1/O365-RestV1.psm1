@@ -82,21 +82,25 @@ function Get-O365RestCalendarItem {
         ConfirmImpact= 'Low'
     )]
     param(
-        [Parameter(ParameterSetName = 'DateFilter')]
+        [Parameter()]
         [string]$EventId,
 
-        [Parameter(ParameterSetName = 'DateFilter')]
+        [Parameter()]
         [datetime]$StartDate,
 
-        [Parameter(ParameterSetName = 'DateFilter')]
+        [Parameter()]
         [datetime]$EndDate,
-
-        [Parameter(ParameterSetName = 'All')]
-        [switch]$All,
 
         [Parameter()]
         [ValidateScript({ [System.TimeZoneInfo]::FindSystemTimeZoneById($_) })]
         [string]$TimeZone = [System.Timezone]::CurrentTimeZone.StandardName,
+
+        [Parameter(ParameterSetName = 'ResultSize')]
+        [ValidateRange(1,499)]
+        [int]$ResultSize,        
+
+        [Parameter(ParameterSetName = 'All')]
+        [switch]$All,
 
         [Parameter()]
         [mailaddress]$UserPrincipalName,
@@ -118,9 +122,11 @@ function Get-O365RestCalendarItem {
     
     process {
         switch ($UserPrincipalName) {
-            { $UserPrincipalName }      { $uri = "$Script:baseUri/users/$($UserPrincipalName.Address)/events" }
-            { -not $UserPrincipalName } { $uri = "$Script:baseUri/me/events" }
+            { $UserPrincipalName }      { $uri =  "$Script:baseUri/users/$($UserPrincipalName.Address)/events" }
+            { -not $UserPrincipalName } { $uri =  "$Script:baseUri/me/events" }
             { $EventId }                { $uri += "/$EventId" }
+            { $ResultSize }             { $uri += "?`$top=$ResultSize" }
+            { -not $ResultSize }        { $uri += "?`$top=10" }
         }
         $filter = @()
         switch ($filter) {
@@ -134,13 +140,8 @@ function Get-O365RestCalendarItem {
                             }
         }
         if ($filter) {
-            $uri += "?`$filter=$($filter -join '&')"
-            $uri += "&`$top=499"
-        }
-        else {
-            $uri += "?`$top=499"
-        }
-        
+            $uri += "&`$filter=$($filter -join '&')"
+        }        
         if ($PSCmdlet.ShouldProcess($UserPrincipalName)) { 
             Invoke-RestMethod -Uri $uri -Credential $Credential -Method Get -ContentType $contentType -Headers $headers
         }

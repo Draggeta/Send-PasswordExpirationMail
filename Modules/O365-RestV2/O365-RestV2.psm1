@@ -83,21 +83,25 @@ function Get-O365RestV2CalendarItem {
         ConfirmImpact= 'Low'
     )]
     param(
-        [Parameter(ParameterSetName = 'EventId')]
+        [Parameter()]
         [string]$EventId,
 
-        [Parameter(ParameterSetName = 'DateFilter')]
+        [Parameter()]
         [datetime]$StartDate,
 
-        [Parameter(ParameterSetName = 'DateFilter')]
+        [Parameter()]
         [datetime]$EndDate,
-
-        [Parameter(ParameterSetName = 'All')]
-        [switch]$All,
 
         [Parameter()]
         [ValidateScript({ [System.TimeZoneInfo]::FindSystemTimeZoneById($_) })]
         [string]$TimeZone = [System.Timezone]::CurrentTimeZone.StandardName,
+
+        [Parameter(ParameterSetName = 'ResultSize')]
+        [ValidateRange(1,499)]
+        [int]$ResultSize,          
+
+        [Parameter(ParameterSetName = 'All')]
+        [switch]$All,
 
         [Parameter()]
         [mailaddress]$UserPrincipalName,
@@ -119,9 +123,11 @@ function Get-O365RestV2CalendarItem {
     
     process {
         switch ($UserPrincipalName) {
-            { $UserPrincipalName }      { $uri = "$Script:baseUri/users/$($UserPrincipalName.Address)/events" }
-            { -not $UserPrincipalName } { $uri = "$Script:baseUri/me/events" }
+            { $UserPrincipalName }      { $uri =  "$Script:baseUri/users/$($UserPrincipalName.Address)/events" }
+            { -not $UserPrincipalName } { $uri =  "$Script:baseUri/me/events" }
             { $EventId }                { $uri += "/$EventId" }
+            { $ResultSize }             { $uri += "?`$top=$ResultSize" }
+            { -not $ResultSize }        { $uri += "?`$top=10" }
         }
         $filter = @()
         switch ($filter) {
@@ -135,8 +141,8 @@ function Get-O365RestV2CalendarItem {
                             }
         }
         if ($filter) {
-            $uri += "?`$filter=$($filter -join '&')"
-        }
+            $uri += "&`$filter=$($filter -join '&')"
+        }   
         if ($PSCmdlet.ShouldProcess($UserPrincipalName)) { 
             Invoke-RestMethod -Uri $uri -Method Get -ContentType $contentType -Headers $headers
         }
