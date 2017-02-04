@@ -64,7 +64,7 @@ function Get-OAuth2AzureAuthorization {
         .SYNOPSIS
             Retrieves an Azure authorization code.
         .DESCRIPTION
-            This cmdlet retrieves an Azure REST API authorization code by displaying a pop up browser window where you log in. 
+            This cmdlet retrieves an Azure REST API authorization code by displaying a pop up browser window where you log in. When using server/daemon authentication, this cmdlet is not needed and only Get-OAuth2AzureToken should be used.
         .PARAMETER ClientId
             The client/application ID that identifies this application.
         .PARAMETER TenantId
@@ -76,7 +76,7 @@ function Get-OAuth2AzureAuthorization {
             In version 1.0 specify the scopes as 'calendars.read' or 'user.readwrite'.
             When using version 2.0, specify the scopes in the format 'http://graph.microsoft.com/user.readbasic.all' and 'https://outlook.office.com/mail.read'.
         .PARAMETER Prompt
-            Specifies what type of login is needed.None specifies single sign-on. Login specifies that credentials must be entered and SSO is negated. Consent specifies that the user must give consent. Not available with the v2.0 authentication API, Admin_Consent specifies that an admin automatically approves the application for all users.
+            Specifies what type of login is needed. None specifies single sign-on. Login specifies that credentials must be entered and SSO is negated. Consent specifies that the user must give consent. Not available with the v2.0 authentication API, Admin_Consent specifies that an admin automatically approves the application for all users.
         .PARAMETER ApiV2
             Enables the use of version 2.0 of the authentication API. Version 2.0 apps can be registered at https://apps.dev.microsoft.com/.
         .EXAMPLE
@@ -191,9 +191,9 @@ function Get-OAuth2AzureToken {
         .PARAMETER Scope
             An array of the permissions you require from this application. Can only be the same or a superset of the scope defined in the authorization request. Mandatory for version 2.0 of the API.
             In version 1.0 specify the scopes as 'calendars.read' or 'user.readwrite'.
-            When using version 2.0, specify the scopes in the format 'http://graph.microsoft.com/user.readbasic.all' and 'https://outlook.office.com/mail.read'.
+            When using version 2.0, specify the scopes in the format 'http://graph.microsoft.com/user.readbasic.all' and 'https://outlook.office.com/mail.read'. When using a server/daemon login in v2.0, use the format 'http://graph.microsoft.com/.default'.
         .PARAMETER AuthorizationCode
-            The authorization code necessary to request an access token. Can be attained by using Get-OAuth2AzureAuthorization.
+            Skip this parameter when requesting an Access Token for a server/daemon application. Only needed when using user authentication. The authorization code necessary to request an access token. Can be attained by using Get-OAuth2AzureAuthorization.
         .PARAMETER ApiV2
             Enables the use of version 2.0 of the authentication API. Version 2.0 apps can be registered at https://apps.dev.microsoft.com/.
         .EXAMPLE
@@ -243,7 +243,7 @@ function Get-OAuth2AzureToken {
         [Parameter(ParameterSetName = 'ApiV2', Mandatory = $true)]
         [string[]]$Scope,
 
-        [Parameter(Mandatory = $true)]
+        [Parameter()]
         [string]$AuthorizationCode,
 
         [Parameter(ParameterSetName = 'ApiV2', Mandatory = $true)]
@@ -265,10 +265,12 @@ function Get-OAuth2AzureToken {
             $false { $url = "$Script:authenticationUrl/$TenantId/oauth2/token" }
             $true  { $url = "$Script:authenticationUrl/$TenantId/oauth2/v2.0/token" }
         }
-        $body = "grant_type=authorization_code&client_id=$ClientId&client_secret=$clientSecretEncoded&redirect_uri=$RedirectUri&code=$AuthorizationCode"
+        $body = "client_id=$ClientId&client_secret=$clientSecretEncoded&redirect_uri=$RedirectUri"
         switch ($body) {
-            { $ResourceUri } { $body += "&resource=$ResourceUri" }
-            { $Scope }       { $body += "&scope=$scopeEncoded" }
+            { $AuthorizationCode }      { $body += "&grant_type=authorization_code&code=$AuthorizationCode" }
+            { -not $AuthorizationCode } { $body += "&grant_type=client_credentials"}
+            { $ResourceUri }            { $body += "&resource=$ResourceUri" }
+            { $Scope }                  { $body += "&scope=$scopeEncoded" }
         }
         $invokeRestMethodParams = @{
             Uri = $url
