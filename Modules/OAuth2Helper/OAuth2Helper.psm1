@@ -1,5 +1,5 @@
-﻿$Script:authenticationUrl = 'https://login.microsoftonline.com'
-
+﻿Set-StrictMode -Version 2
+$Script:authenticationUrl = 'https://login.microsoftonline.com'
 
 function OAuth2OpenWindow {
     <#
@@ -27,12 +27,11 @@ function OAuth2OpenWindow {
     )
 
     begin {
+        #Load the System.Windows.Forms assembly required to open the WebPage to authenticate
+        Add-Type -AssemblyName System.Windows.Forms
     }
 
     process {
-        #Load the System.Windows.Forms assembly required to open the WebPage to authenticate
-        Add-Type -AssemblyName System.Windows.Forms
-
         #Create a form and a webbrowser object to display the authentication page.
         $form = New-Object -TypeName System.Windows.Forms.Form -Property @{Width=440;Height=640}
         $web  = New-Object -TypeName System.Windows.Forms.WebBrowser -Property @{Width=420;Height=600;Url=($Url -f ($Scope -join "%20")) }
@@ -40,7 +39,7 @@ function OAuth2OpenWindow {
         #Specify what the browser should do once a message matching the regex specified below has been returned.
         $docComp  = {
             $uri = $web.Url.AbsoluteUri        
-            if ($uri -match "error=[^&]*|code=[^&]*") {$form.Close() }
+            if ($uri -match "error=[^&]*|code=[^&]*|admin_consent=[^&]*") { $form.Close() }
         }
         #Disable dialog boxes such as script error messages
         $web.ScriptErrorsSuppressed = $true
@@ -58,7 +57,6 @@ function OAuth2OpenWindow {
     }
 }
 
-
 function Get-OAuth2AzureAuthorization {
     <#
         .SYNOPSIS
@@ -74,7 +72,7 @@ function Get-OAuth2AzureAuthorization {
         .PARAMETER Scope
             An array of the permissions you require from this application. Required when using the v2.0 API.
             In version 1.0 specify the scopes as 'calendars.read' or 'user.readwrite'.
-            When using version 2.0, specify the scopes in the format 'http://graph.microsoft.com/user.readbasic.all' and 'https://outlook.office.com/mail.read'.
+            When using version 2.0, specify the scopes in the format 'http://graph.microsoft.com/user.readbasic.all' and 'https://outlook.office.com/mail.read'. 
         .PARAMETER Prompt
             Specifies what type of login is needed. None specifies single sign-on. Login specifies that credentials must be entered and SSO is negated. Consent specifies that the user must give consent. Not available with the v2.0 authentication API, Admin_Consent specifies that an admin automatically approves the application for all users.
         .PARAMETER ApiV2
@@ -94,7 +92,7 @@ function Get-OAuth2AzureAuthorization {
             SessionState : 9c4b9ec2-3dd9-4762-939a-e0bf877a4ac4
             State        : a52c08af-8b94-434e-878e-793f4e66a62b
 
-            Opens a browser window to login.microsoftonline.com and retrieve a version 2.0 authorization code. The aurthorization code grants only the access specified in the scope.
+            Opens a browser window to login.microsoftonline.com and retrieve a version 2.0 authorization code. The authorization code grants only the access specified in the scope.
         .INPUTS
         	This command does not accept pipeline input.
         .OUTPUTS
@@ -128,12 +126,11 @@ function Get-OAuth2AzureAuthorization {
     )
 
     begin {
-    }
-
-    process {
         #Load the System.Web assembly required to encode the values that will be entered into the URL.
         Add-Type -AssemblyName System.Web
-        
+    }
+
+    process {        
         #UrlEncode the redirect URI, resource and scope for special characters 
         $state = New-Guid
         $scopeEncoded = [System.Web.HttpUtility]::UrlEncode($Scope)
@@ -152,17 +149,20 @@ function Get-OAuth2AzureAuthorization {
         $query = OAuth2OpenWindow -Url $url
         #Parse the query so the code and session state can be found.
         $output = [System.Web.HttpUtility]::ParseQueryString($query.Url.Query)
-        $properties = @{
-            Code = $output['code']
-            SessionState = $output['session_state']
-            State = $output['state']
+        $properties = @{}
+        switch ($output) {
+            error               { $properties.Add('Error', $output['error']) }
+            error_description   { $properties.Add('ErrorDescription', $output['error_description']); break }
+            admin_consent       { $properties.Add('AdminConsent', $output['admin_consent']) }
+            state               { $properties.Add('State', $output['state']) }
+            session_state       { $properties.Add('SessionState', $output['session_state']) }
         }
         $object = New-Object -TypeName PSObject -Property $properties
     }
     
     end {
-        if ($object.State -eq $state) {
-            return $object
+        if ($object.State -eq $state -or $object.Error) {
+            $object
         }
         else {
             Write-Warning "The returned state '$($object.State)' isn't equal to generated state '$state'. Reply cannot be trusted."
@@ -170,7 +170,6 @@ function Get-OAuth2AzureAuthorization {
         }
     }
 }
-
 
 function Get-OAuth2AzureToken {
     <#
@@ -250,13 +249,12 @@ function Get-OAuth2AzureToken {
         [switch]$ApiV2
     )
 
-    begin {    
+    begin {
+        #Load the System.Web assembly required to encode the values that will be entered into the URL.
+        Add-Type -AssemblyName System.Web
     }
 
     process {
-        #Load the System.Web assembly required to encode the values that will be entered into the URL.
-        Add-Type -AssemblyName System.Web
-        
         #UrlEncode the ClientSecret for special characters.
         $clientSecretEncoded = [System.Web.HttpUtility]::UrlEncode($ClientSecret)
         $scopeEncoded = [System.Web.HttpUtility]::UrlEncode($Scope)
@@ -282,15 +280,114 @@ function Get-OAuth2AzureToken {
         #Perform the request
         $authorization = Invoke-RestMethod @invokeRestMethodParams
         #Get the access token
-        $properties = @{
-            AccessToken = $authorization.access_token
-            RefreshToken = $authorization.refresh_token
-            IdToken = $authorization.id_token
+        $properties = @{}
+        switch ($authorization) {
+            access_token        { $properties.Add('AccessToken', $authorization.access_token) }
+            token_type          { $properties.Add('TokenType', $authorization.refresh_token) }
+            refresh_token       { $properties.Add('RefreshToken', $authorization.refresh_token) }
+            id_token            { $properties.Add('IdToken', $authorization.id_token) }
         }
         $object = New-Object -TypeName PSObject -Property $properties
     }
 
     end {
-        return $object
+        $object
+    }
+}
+
+function Grant-OAuth2AzureAdminConsent {
+    <#
+        .SYNOPSIS
+            Grants admin consent to an application.
+        .DESCRIPTION
+            This cmdlet grants an application administrative consent by displaying a pop up browser window where you log in.
+        .PARAMETER ClientId
+            The client/application ID that identifies this application.
+        .PARAMETER TenantId
+            The tenant ID that identifies the organization. Can be 'common' or a specific tenant ID. If version 2.0 of the API is used, 'consumer' and 'organization' can be specified as well. Consumer specifies that only Microsoft Accounts can authenticate. Organization allows only Organizational Accounts to log in.
+        .PARAMETER RedirectUri
+            The URI to where you should be redirected after authenticating. Native apps should use 'urn:ietf:wg:oauth:2.0:oob' as their Redirect URI in version 1.0. In version 2.0 'https://login.microsoftonline.com/common/oauth2/nativeclient' should be specified for native apps, however 'urn:ietf:wg:oauth:2.0:oob' also works.
+        .PARAMETER ApiV2
+            Enables the use of version 2.0 of the authentication API. Version 2.0 apps can be registered at https://apps.dev.microsoft.com/.
+        .EXAMPLE
+            Grant-OAuth2AzureAdminConsent -ClientId $appId -TenantId contoso.com
+        
+            AdminConsent : True
+            SessionState : fed8744b-c5cf-4935-b836-142756485e48
+            State        : 031d3567-25c3-123f-a4d4-8a7e7fb2343e
+
+            Opens a browser window to login.microsoftonline.com and grant administrative consent for a version 1.0 app.
+        .EXAMPLE
+            Grant-OAuth2AzureAdminConsent -ClientId $apiv2ClientId -RedirectUri 'https://login.microsoftonline.com/common/oauth2/nativeclient' -ApiV2
+        
+            AdminConsent : True
+            State        : a52c08af-8b94-434e-878e-793f4e66a62b
+            Tenant       : fabrikam.com
+
+            Opens a browser window to login.microsoftonline.com and grant administrative consent for a version 2.0 app.
+        .INPUTS
+        	This command does not accept pipeline input.
+        .OUTPUTS
+        	This command outputs the returned authorization code, state and session state.
+        .LINK
+        	Get-OAuth2AzureToken
+        .COMPONENT
+            OAuth2OpenWindow 
+    #>
+    [CmdletBinding(DefaultParameterSetName = 'ApiV1')]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ClientId,
+
+        [Parameter()]
+        [string]$TenantId = 'common',
+
+        [Parameter()]
+        [string]$RedirectUri = 'urn:ietf:wg:oauth:2.0:oob',
+
+        [Parameter()]
+        [switch]$ApiV2
+    )
+
+    begin {
+        #Load the System.Web assembly required to encode the values that will be entered into the URL.
+        Add-Type -AssemblyName System.Web
+    }
+
+    process {
+        #UrlEncode the redirect URI, resource and scope for special characters 
+        $state = New-Guid
+        switch ($RedirectUri) {
+            'urn:ietf:wg:oauth:2.0:oob' { $redirectUriEncoded = 'urn:ietf:wg:oauth:2.0:oob' }
+            Default                     { $redirectUriEncoded =  [System.Web.HttpUtility]::UrlEncode($RedirectUri) }
+        }
+        switch ($ApiV2.IsPresent) {
+            $false { $url = "$Script:authenticationUrl/$TenantId/oauth2/authorize?response_type=code&client_id=$ClientId&redirect_uri=$redirectUriEncoded&state=$state&prompt=admin_consent" }
+            $true  { $url = "$Script:authenticationUrl/$TenantId/adminconsent?client_id=$ClientId&redirect_uri=$redirectUriEncoded&state=$state" }
+        }
+        #Open a window to the specific url and authenticate with your credentials.
+        $query = OAuth2OpenWindow -Url $url
+        #Parse the query so the code and session state can be found.
+        $output = [System.Web.HttpUtility]::ParseQueryString($query.Url.Query)
+        $properties = @{}
+        switch ($output) {
+            error               { $properties.Add('Error', $output['error']) }
+            error_description   { $properties.Add('ErrorDescription', $output['error_description']); break }
+            admin_consent       { $properties.Add('AdminConsent', $output['admin_consent']) }
+            state               { $properties.Add('State', $output['state']) }
+            session_state       { $properties.Add('SessionState', $output['session_state']) }
+            tenant              { $properties.Add('Tenant', $output['tenant']) }
+        }
+        $object = New-Object -TypeName PSObject -Property $properties
+    }
+    
+    end {
+        if ($object.State -eq $state -or $object.Error) {
+            $object
+        }
+        else {
+            Write-Warning "The returned state '$($object.State)' isn't equal to generated state '$state'. Reply cannot be trusted."
+            break
+        }
     }
 }
