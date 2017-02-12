@@ -150,14 +150,16 @@ function Get-OAuth2AzureAuthorization {
         #Parse the query so the code and session state can be found.
         $output = [System.Web.HttpUtility]::ParseQueryString($query.Url.Query)
         $properties = @{}
-        switch ($output) {
+        switch ($output.PSObject.Properties.Name) {
             error               { $properties.Add('Error', $output['error']) }
             error_description   { $properties.Add('ErrorDescription', $output['error_description']); break }
             admin_consent       { $properties.Add('AdminConsent', $output['admin_consent']) }
             state               { $properties.Add('State', $output['state']) }
             session_state       { $properties.Add('SessionState', $output['session_state']) }
         }
-        $object = New-Object -TypeName PSObject -Property $properties
+        if ($properties.count -gt 0) {
+            $object = New-Object -TypeName PSObject -Property $properties
+        }
     }
     
     end {
@@ -166,7 +168,6 @@ function Get-OAuth2AzureAuthorization {
         }
         else {
             Write-Warning "The returned state '$($object.State)' isn't equal to generated state '$state'. Reply cannot be trusted."
-            break
         }
     }
 }
@@ -264,7 +265,7 @@ function Get-OAuth2AzureToken {
             $true  { $url = "$Script:authenticationUrl/$TenantId/oauth2/v2.0/token" }
         }
         $body = "client_id=$ClientId&client_secret=$clientSecretEncoded&redirect_uri=$RedirectUri"
-        switch ($body) {
+        switch ($true) {
             { $AuthorizationCode }      { $body += "&grant_type=authorization_code&code=$AuthorizationCode" }
             { -not $AuthorizationCode } { $body += "&grant_type=client_credentials"}
             { $ResourceUri }            { $body += "&resource=$ResourceUri" }
@@ -277,21 +278,26 @@ function Get-OAuth2AzureToken {
             Body = $body
             ErrorAction = 'Stop'    
         }
+        
         #Perform the request
         $authorization = Invoke-RestMethod @invokeRestMethodParams
         #Get the access token
         $properties = @{}
-        switch ($authorization) {
-            access_token        { $properties.Add('AccessToken', $authorization.access_token) }
-            token_type          { $properties.Add('TokenType', $authorization.refresh_token) }
-            refresh_token       { $properties.Add('RefreshToken', $authorization.refresh_token) }
-            id_token            { $properties.Add('IdToken', $authorization.id_token) }
+        switch ($authorization.PSObject.Properties.Name) {
+            refresh_token   { $properties.Add('RefreshToken', $authorization.refresh_token) }
+            id_token        { $properties.Add('IdToken', $authorization.id_token) }
+            access_token    { $properties.Add('AccessToken', $authorization.access_token) }
+            token_type      { $properties.Add('TokenType', $authorization.token_type) }
         }
-        $object = New-Object -TypeName PSObject -Property $properties
+        if ($properties.count -gt 0) {
+            $object = New-Object -TypeName PSObject -Property $properties
+        }
     }
 
     end {
-        $object
+        if ($object) {
+            $object
+        }
     }
 }
 
@@ -370,15 +376,16 @@ function Grant-OAuth2AzureAdminConsent {
         #Parse the query so the code and session state can be found.
         $output = [System.Web.HttpUtility]::ParseQueryString($query.Url.Query)
         $properties = @{}
-        switch ($output) {
+        switch ($output.PSObject.Properties.Name) {
             error               { $properties.Add('Error', $output['error']) }
             error_description   { $properties.Add('ErrorDescription', $output['error_description']); break }
-            admin_consent       { $properties.Add('AdminConsent', $output['admin_consent']) }
-            state               { $properties.Add('State', $output['state']) }
-            session_state       { $properties.Add('SessionState', $output['session_state']) }
             tenant              { $properties.Add('Tenant', $output['tenant']) }
+            admin_consent       { $properties.Add('AdminConsent', $output['admin_consent']) }
+            session_state       { $properties.Add('SessionState', $output['session_state']) }
         }
-        $object = New-Object -TypeName PSObject -Property $properties
+        if ($properties.count -gt 0) {
+            $object = New-Object -TypeName PSObject -Property $properties
+        }
     }
     
     end {
@@ -387,7 +394,6 @@ function Grant-OAuth2AzureAdminConsent {
         }
         else {
             Write-Warning "The returned state '$($object.State)' isn't equal to generated state '$state'. Reply cannot be trusted."
-            break
         }
     }
 }
