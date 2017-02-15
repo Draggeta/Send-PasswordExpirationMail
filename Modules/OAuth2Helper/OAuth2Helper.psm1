@@ -34,7 +34,7 @@ function OAuth2OpenWindow {
     process {
         #Create a form and a webbrowser object to display the authentication page.
         $form = New-Object -TypeName System.Windows.Forms.Form -Property @{Width=440;Height=640}
-        $web  = New-Object -TypeName System.Windows.Forms.WebBrowser -Property @{Width=420;Height=600;Url=($Url -f ($Scope -join "%20")) }
+        $web  = New-Object -TypeName System.Windows.Forms.WebBrowser -Property @{Width=420;Height=600;Url=($Url) }
 
         #Specify what the browser should do once a message matching the regex specified below has been returned.
         $docComp  = {
@@ -72,9 +72,9 @@ function Get-OAuth2AzureAuthorization {
         .PARAMETER Scope
             An array of the permissions you require from this application. Required when using the v2.0 API.
             In version 1.0 specify the scopes as 'calendars.read' or 'user.readwrite'.
-            When using version 2.0, specify the scopes in the format 'http://graph.microsoft.com/user.readbasic.all' and 'https://outlook.office.com/mail.read'. 
+            When using version 2.0, you can also use openid, email, profile and offline_access as part of a space separated array of scopes. Some resources require the extra requested scopes to be defined in a fashion similar to this url: 'https://outlook.office.com/mail.read'.
         .PARAMETER Prompt
-            Specifies what type of login is needed. None specifies single sign-on. Login specifies that credentials must be entered and SSO is negated. Consent specifies that the user must give consent. Not available with the v2.0 authentication API, Admin_Consent specifies that an admin automatically approves the application for all users.
+            Specifies what type of login is needed. None specifies single sign-on. Login specifies that credentials must be entered and SSO is negated. Consent forces the user to accept to the required permissions.
         .PARAMETER ApiV2
             Enables the use of version 2.0 of the authentication API. Version 2.0 apps can be registered at https://apps.dev.microsoft.com/.
         .EXAMPLE
@@ -118,7 +118,7 @@ function Get-OAuth2AzureAuthorization {
         [string[]]$Scope,
 
         [Parameter()]
-        [ValidateSet('Login','Consent','Admin_Consent','None')]
+        [ValidateSet('Login','Consent','None')]
         [string]$Prompt = 'Login',
 
         [Parameter(ParameterSetName = 'ApiV2', Mandatory = $true)]
@@ -150,11 +150,11 @@ function Get-OAuth2AzureAuthorization {
         #Parse the query so the code and session state can be found.
         $output = [System.Web.HttpUtility]::ParseQueryString($query.Url.Query)
         $properties = @{}
-        switch ($output.PSObject.Properties.Name) {
+        switch ($output) {
             error               { $properties.Add('Error', $output['error']) }
             error_description   { $properties.Add('ErrorDescription', $output['error_description']); break }
+            code                { $properties.Add('AuthorizationCode', $output['code']) }
             admin_consent       { $properties.Add('AdminConsent', $output['admin_consent']) }
-            state               { $properties.Add('State', $output['state']) }
             session_state       { $properties.Add('SessionState', $output['session_state']) }
         }
         if ($properties.count -gt 0) {
@@ -163,7 +163,7 @@ function Get-OAuth2AzureAuthorization {
     }
     
     end {
-        if ($object.State -eq $state -or $object.Error) {
+        if (($state -eq $output['state']) -or ($null -ne $output['error'])) {
             $object
         }
         else {
@@ -189,9 +189,9 @@ function Get-OAuth2AzureToken {
         .PARAMETER ResourceUri
             The URI of the resource you're trying to access. Only used by version 1.0 of the API. Specify this parameter in the format 'https://outlook.office.com'.
         .PARAMETER Scope
-            An array of the permissions you require from this application. Can only be the same or a superset of the scope defined in the authorization request. Mandatory for version 2.0 of the API.
+            An array of the permissions you require from this application. Can only be the same or a subset of the scope defined in the authorization request. Mandatory for version 2.0 of the API.
             In version 1.0 specify the scopes as 'calendars.read' or 'user.readwrite'.
-            When using version 2.0, specify the scopes in the format 'http://graph.microsoft.com/user.readbasic.all' and 'https://outlook.office.com/mail.read'. When using a server/daemon login in v2.0, use the format 'http://graph.microsoft.com/.default'.
+            When using version 2.0, specify the scopes in the format of the version 1.0 scope or 'http://graph.microsoft.com/user.readbasic.all' and 'https://outlook.office.com/mail.read'. When using a server/daemon login in v2.0, use the format 'http://graph.microsoft.com/.default'.
         .PARAMETER AuthorizationCode
             Skip this parameter when requesting an Access Token for a server/daemon application. Only needed when using user authentication. The authorization code necessary to request an access token. Can be attained by using Get-OAuth2AzureAuthorization.
         .PARAMETER ApiV2
@@ -295,7 +295,7 @@ function Get-OAuth2AzureToken {
     }
 
     end {
-        if ($object) {
+        if ($true -eq (Test-Path -Path 'variable:\object')) {
             $object
         }
     }
@@ -369,17 +369,18 @@ function Grant-OAuth2AzureAdminConsent {
         }
         switch ($ApiV2.IsPresent) {
             $false { $url = "$Script:authenticationUrl/$TenantId/oauth2/authorize?response_type=code&client_id=$ClientId&redirect_uri=$redirectUriEncoded&state=$state&prompt=admin_consent" }
-            $true  { $url = "$Script:authenticationUrl/$TenantId/adminconsent?client_id=$ClientId&redirect_uri=$redirectUriEncoded&state=$state" }
+            $true  { $url = "$Script:authenticationUrl/$TenantId/adminconsent?client_id=$ClientId&redirect_uri=$redirectUriEncoded&state=$state&prompt=login" }
         }
         #Open a window to the specific url and authenticate with your credentials.
         $query = OAuth2OpenWindow -Url $url
         #Parse the query so the code and session state can be found.
         $output = [System.Web.HttpUtility]::ParseQueryString($query.Url.Query)
         $properties = @{}
-        switch ($output.PSObject.Properties.Name) {
+        switch ($output) {
             error               { $properties.Add('Error', $output['error']) }
             error_description   { $properties.Add('ErrorDescription', $output['error_description']); break }
             tenant              { $properties.Add('Tenant', $output['tenant']) }
+            code                { $properties.Add('AuthorizationCode', $output['code']) }
             admin_consent       { $properties.Add('AdminConsent', $output['admin_consent']) }
             session_state       { $properties.Add('SessionState', $output['session_state']) }
         }
@@ -389,7 +390,7 @@ function Grant-OAuth2AzureAdminConsent {
     }
     
     end {
-        if ($object.State -eq $state -or $object.Error) {
+        if (($state -eq $output['state']) -or ($null -ne $output['error'])) {
             $object
         }
         else {
